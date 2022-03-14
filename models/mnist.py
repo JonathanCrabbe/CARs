@@ -69,7 +69,7 @@ class ClassifierMnist(nn.Module):
 
     def test_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader) -> tuple:
         """
-
+        One epoch of the testing loop
         Args:
             device: device where tensor manipulations are done
             dataloader: test set dataloader
@@ -182,3 +182,6 @@ class ClassifierMnist(nn.Module):
                     "checkpoint_files": self.checkpoints_files}
         with open(path_to_metadata, 'w') as f:
             json.dump(metadata, f, indent=4, sort_keys=True, **kwargs)
+
+    def get_hooked_modules(self) -> dict[str, nn.Module]:
+        return {"Conv1": self.maxpool1, "Conv2": self.maxpool2, "Lin1": self.fc1, "Lin2": self.fc2}
