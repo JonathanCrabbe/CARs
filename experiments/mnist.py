@@ -34,7 +34,7 @@ def concept_accuracy(random_seed: int, batch_size: int, latent_dim: int, train: 
     # Train MNIST Classifier
     model = ClassifierMnist(latent_dim, model_name)
     if train:
-        model.fit(device, train_loader, test_loader, save_dir, n_epoch=1)
+        model.fit(device, train_loader, test_loader, save_dir)
     model.load_state_dict(torch.load(save_dir / f"{model_name}.pt"), strict=False)
 
     # Register hooks to extract activations
