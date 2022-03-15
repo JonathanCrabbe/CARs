@@ -6,7 +6,7 @@ import os
 from models.mnist import ClassifierMnist
 from torchvision.datasets import MNIST
 from torchvision import transforms
-from utils.hooks import register_hooks, get_saved_representations
+from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
 from utils.dataset import generate_mnist_concept_dataset
 from explanations.concept import CAR, CAV
 from sklearn.metrics import accuracy_score
@@ -41,24 +41,26 @@ def concept_accuracy(random_seed: int, batch_size: int, latent_dim: int, train: 
     model.load_state_dict(torch.load(save_dir / f"{model_name}.pt"), strict=False)
 
     # Register hooks to extract activations
-    module_dic = register_hooks(model, save_dir)
+    module_dic, handler_train_dic = register_hooks(model, save_dir, "train")
     X_train, y_train = generate_mnist_concept_dataset(concept_to_class["loop"], data_dir, True, 200)
     model.eval()
     model(torch.from_numpy(X_train).to(device))
+    remove_all_hooks(handler_train_dic)
+    module_dic, handler_test_dic = register_hooks(model, save_dir, "test")
+    X_test, y_test = generate_mnist_concept_dataset(concept_to_class["loop"], data_dir, False, 50)
+    model(torch.from_numpy(X_test).to(device))
     car = CAR(device)
     cav = CAV(device)
-    for module_name in module_dic:
-        H_train = get_saved_representations(module_name, save_dir)
+    for hook_name in handler_train_dic:
+        H_train = get_saved_representations(hook_name, save_dir)
         car.fit(H_train, y_train)
         cav.fit(H_train, y_train)
-        logging.info(accuracy_score(y_train, car.predict(H_train)))
-        logging.info(accuracy_score(y_train, cav.predict(H_train)))
-
-    """
-    model.test_epoch(device, test_loader)
-    for module_name in module_dic:
-        logging.info(get_saved_representations(module_name, save_dir).shape)
-    """
+        logging.info(f"CAR Train Acc: {accuracy_score(y_train, car.predict(H_train))}")
+        logging.info(f"CAV Train Acc: {accuracy_score(y_train, cav.predict(H_train))}")
+        test_hook_name = "test" + hook_name[5:]
+        H_test = get_saved_representations(test_hook_name, save_dir)
+        logging.info(f"CAR Test Acc: {accuracy_score(y_test, car.predict(H_test))}")
+        logging.info(f"CAV Test Acc: {accuracy_score(y_test, cav.predict(H_test))}")
 
 
 if __name__ == "__main__":
