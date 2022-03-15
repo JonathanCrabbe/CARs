@@ -7,6 +7,9 @@ from models.mnist import ClassifierMnist
 from torchvision.datasets import MNIST
 from torchvision import transforms
 from utils.hooks import register_hooks, get_saved_representations
+from utils.dataset import generate_mnist_concept_dataset
+from explanations.concept import CAR, CAV
+from sklearn.metrics import accuracy_score
 
 concept_to_class = {"loop": [0, 6, 8, 9], "straight_lines": [1, 4, 7], "mirror_symmetry": [0, 3,  8], }
 
@@ -14,8 +17,8 @@ concept_to_class = {"loop": [0, 6, 8, 9], "straight_lines": [1, 4, 7], "mirror_s
 def concept_accuracy(random_seed: int, batch_size: int, latent_dim: int, train: bool,
                      save_dir: Path = Path.cwd()/"results/mnist/concept_accuracy",
                      data_dir: Path = Path.cwd()/"data/mnist"):
-    torch.manual_seed(random_seed)
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    torch.manual_seed(random_seed)
     model_name = "model"
     save_dir = save_dir / model_name
     if not save_dir.exists():
@@ -39,9 +42,23 @@ def concept_accuracy(random_seed: int, batch_size: int, latent_dim: int, train: 
 
     # Register hooks to extract activations
     module_dic = register_hooks(model, save_dir)
+    X_train, y_train = generate_mnist_concept_dataset(concept_to_class["loop"], data_dir, True, 200)
+    model.eval()
+    model(torch.from_numpy(X_train).to(device))
+    car = CAR(device)
+    cav = CAV(device)
+    for module_name in module_dic:
+        H_train = get_saved_representations(module_name, save_dir)
+        car.fit(H_train, y_train)
+        cav.fit(H_train, y_train)
+        logging.info(accuracy_score(y_train, car.predict(H_train)))
+        logging.info(accuracy_score(y_train, cav.predict(H_train)))
+
+    """
     model.test_epoch(device, test_loader)
     for module_name in module_dic:
         logging.info(get_saved_representations(module_name, save_dir).shape)
+    """
 
 
 if __name__ == "__main__":
