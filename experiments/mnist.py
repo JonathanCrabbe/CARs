@@ -90,4 +90,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.name == "concept_accuracy":
         concept_accuracy(args.seeds, args.batch_size, args.latent_dim, args.train)
+    else:
+        raise ValueError(f"{args.name} is not a valid experiment name")
 
