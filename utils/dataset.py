@@ -7,10 +7,12 @@ from torch.utils.data import DataLoader
 from pathlib import Path
 
 
-def generate_mnist_concept_dataset(concept_classes: list[int], data_dir: Path, train: bool, subset_size: int) -> tuple:
+def generate_mnist_concept_dataset(concept_classes: list[int], data_dir: Path, train: bool, subset_size: int,
+                                   random_seed: int) -> tuple:
     """
     Return a concept dataset with positive/negatives for MNIST
     Args:
+        random_seed: random seed for reproducibility
         subset_size: size of the positive and negative subset
         concept_classes: the classes where the concept is present in MNIST
         data_dir: directory where MNIST is saved
@@ -37,5 +39,6 @@ def generate_mnist_concept_dataset(concept_classes: list[int], data_dir: Path, t
     negative_images, negative_labels = next(iter(negative_loader))
     X = np.concatenate((positive_images.cpu().numpy(), negative_images.cpu().numpy()), 0)
     y = np.concatenate((np.ones(subset_size), np.zeros(subset_size)), 0)
+    np.random.seed(random_seed)
     rand_perm = np.random.permutation(len(X))
     return X[rand_perm], y[rand_perm]

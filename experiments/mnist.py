@@ -1,3 +1,4 @@
+import itertools
 import logging
 import argparse
 import torch
@@ -12,14 +13,15 @@ from utils.dataset import generate_mnist_concept_dataset
 from explanations.concept import CAR, CAV
 from sklearn.metrics import accuracy_score
 
-concept_to_class = {"loop": [0, 6, 8, 9], "straight_lines": [1, 4, 7], "mirror_symmetry": [0, 3,  8], }
+concept_to_class = {"loop": [0, 6, 8, 9], "straight_lines": [1, 4, 7], "mirror_symmetry": [0, 3,  8],
+                    "tail": [2, 3, 5, 9]}
 
 
-def concept_accuracy(random_seed: int, batch_size: int, latent_dim: int, train: bool,
+def concept_accuracy(random_seeds: list[int], batch_size: int, latent_dim: int, train: bool,
                      save_dir: Path = Path.cwd()/"results/mnist/concept_accuracy",
                      data_dir: Path = Path.cwd()/"data/mnist", model_name: str = "model") -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    torch.manual_seed(random_seed)
+    torch.manual_seed(random_seeds[0])
     model_dir = save_dir / model_name
     if not save_dir.exists():
         os.makedirs(save_dir)
@@ -43,16 +45,16 @@ def concept_accuracy(random_seed: int, batch_size: int, latent_dim: int, train: 
 
     # Fit a concept classifier and test accuracy for each concept
     results_data = []
-    for concept_name in concept_to_class:
-        logging.info(f"Working with concept {concept_name}")
+    for concept_name, random_seed in itertools.product(concept_to_class, random_seeds):
+        logging.info(f"Working with concept {concept_name} and seed {random_seed}")
         # Save representations for training concept examples and then remove the hooks
-        module_dic, handler_train_dic = register_hooks(model, model_dir, f"{concept_name}_train")
-        X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, True, 200)
+        module_dic, handler_train_dic = register_hooks(model, model_dir, f"{concept_name}_seed{random_seed}_train")
+        X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, True, 200, random_seed)
         model(torch.from_numpy(X_train).to(device))
         remove_all_hooks(handler_train_dic)
         # Save representations for testing concept examples and then remove the hooks
-        module_dic, handler_test_dic = register_hooks(model, model_dir, f"{concept_name}_test")
-        X_test, y_test = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, False, 50)
+        module_dic, handler_test_dic = register_hooks(model, model_dir, f"{concept_name}_seed{random_seed}_test")
+        X_test, y_test = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, False, 50, random_seed)
         model(torch.from_numpy(X_test).to(device))
         remove_all_hooks(handler_test_dic)
         # Create concept classifiers, fit them and test them for each representation space
@@ -60,31 +62,32 @@ def concept_accuracy(random_seed: int, batch_size: int, latent_dim: int, train: 
             logging.info(f"Fitting concept classifiers for {module_name}")
             car = CAR(device)
             cav = CAV(device)
-            hook_name = f"{concept_name}_train_{module_name}"
+            hook_name = f"{concept_name}_seed{random_seed}_train_{module_name}"
             H_train = get_saved_representations(hook_name, model_dir)
             car.fit(H_train, y_train)
             cav.fit(H_train, y_train)
-            hook_name = f"{concept_name}_test_{module_name}"
+            hook_name = f"{concept_name}_seed{random_seed}_test_{module_name}"
             H_test = get_saved_representations(hook_name, model_dir)
-            results_data.append([concept_name, module_name, "CAR", accuracy_score(y_train, car.predict(H_train)),
+            results_data.append([concept_name, module_name, random_seed, "CAR",
+                                 accuracy_score(y_train, car.predict(H_train)),
                                  accuracy_score(y_test, car.predict(H_test))])
-            results_data.append([concept_name, module_name, "CAV", accuracy_score(y_train, cav.predict(H_train)),
+            results_data.append([concept_name, module_name, random_seed, "CAV",
+                                 accuracy_score(y_train, cav.predict(H_train)),
                                  accuracy_score(y_test, cav.predict(H_test))])
-    results_df = pd.DataFrame(results_data, columns=["Concept", "Layer", "Method", "Train ACC", "Test ACC"])
+    results_df = pd.DataFrame(results_data, columns=["Concept", "Layer", "Seed", "Method", "Train ACC", "Test ACC"])
     csv_path = save_dir/"metrics.csv"
-    csv_inexistent = not csv_path.exists()
-    results_df.to_csv(csv_path, header=csv_inexistent, mode="a", index=False)
+    results_df.to_csv(csv_path, header=True, mode="w", index=False)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default="concept_accuracy")
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument('--seeds', nargs="+", type=int, default=[1, 2, 3, 4, 5])
     parser.add_argument("--batch_size", type=int, default=120)
     parser.add_argument("--latent_dim", type=int, default=5)
     parser.add_argument("--train", action='store_true')
     args = parser.parse_args()
     if args.name == "concept_accuracy":
-        concept_accuracy(args.seed, args.batch_size, args.latent_dim, args.train)
+        concept_accuracy(args.seeds, args.batch_size, args.latent_dim, args.train)
 
