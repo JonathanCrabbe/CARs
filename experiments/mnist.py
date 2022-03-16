@@ -1,8 +1,9 @@
 import logging
 import argparse
-from pathlib import Path
 import torch
 import os
+import pandas as pd
+from pathlib import Path
 from models.mnist import ClassifierMnist
 from torchvision.datasets import MNIST
 from torchvision import transforms
@@ -16,51 +17,63 @@ concept_to_class = {"loop": [0, 6, 8, 9], "straight_lines": [1, 4, 7], "mirror_s
 
 def concept_accuracy(random_seed: int, batch_size: int, latent_dim: int, train: bool,
                      save_dir: Path = Path.cwd()/"results/mnist/concept_accuracy",
-                     data_dir: Path = Path.cwd()/"data/mnist"):
+                     data_dir: Path = Path.cwd()/"data/mnist", model_name: str = "model") -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     torch.manual_seed(random_seed)
-    model_name = "model"
-    save_dir = save_dir / model_name
+    model_dir = save_dir / model_name
     if not save_dir.exists():
         os.makedirs(save_dir)
-
-    # Load MNIST
-    train_set = MNIST(data_dir, train=True, download=True)
-    test_set = MNIST(data_dir, train=False, download=True)
-    train_transform = transforms.Compose([transforms.ToTensor()])
-    test_transform = transforms.Compose([transforms.ToTensor()])
-    train_set.transform = train_transform
-    test_set.transform = test_transform
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size)
-    test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
     # Train MNIST Classifier
     model = ClassifierMnist(latent_dim, model_name)
     if train:
-        model.fit(device, train_loader, test_loader, save_dir)
-    model.load_state_dict(torch.load(save_dir / f"{model_name}.pt"), strict=False)
-
-    # Register hooks to extract activations
-    module_dic, handler_train_dic = register_hooks(model, save_dir, "train")
-    X_train, y_train = generate_mnist_concept_dataset(concept_to_class["loop"], data_dir, True, 200)
+        logging.info("Fitting MNIST classifier")
+        train_set = MNIST(data_dir, train=True, download=True)
+        test_set = MNIST(data_dir, train=False, download=True)
+        train_transform = transforms.Compose([transforms.ToTensor()])
+        test_transform = transforms.Compose([transforms.ToTensor()])
+        train_set.transform = train_transform
+        test_set.transform = test_transform
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size)
+        test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
+        model.fit(device, train_loader, test_loader, model_dir)
+    model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
+    model.to(device)
     model.eval()
-    model(torch.from_numpy(X_train).to(device))
-    remove_all_hooks(handler_train_dic)
-    module_dic, handler_test_dic = register_hooks(model, save_dir, "test")
-    X_test, y_test = generate_mnist_concept_dataset(concept_to_class["loop"], data_dir, False, 50)
-    model(torch.from_numpy(X_test).to(device))
-    car = CAR(device)
-    cav = CAV(device)
-    for hook_name in handler_train_dic:
-        H_train = get_saved_representations(hook_name, save_dir)
-        car.fit(H_train, y_train)
-        cav.fit(H_train, y_train)
-        logging.info(f"CAR Train Acc: {accuracy_score(y_train, car.predict(H_train))}")
-        logging.info(f"CAV Train Acc: {accuracy_score(y_train, cav.predict(H_train))}")
-        test_hook_name = "test" + hook_name[5:]
-        H_test = get_saved_representations(test_hook_name, save_dir)
-        logging.info(f"CAR Test Acc: {accuracy_score(y_test, car.predict(H_test))}")
-        logging.info(f"CAV Test Acc: {accuracy_score(y_test, cav.predict(H_test))}")
+
+    # Fit a concept classifier and test accuracy for each concept
+    results_data = []
+    for concept_name in concept_to_class:
+        logging.info(f"Working with concept {concept_name}")
+        # Save representations for training concept examples and then remove the hooks
+        module_dic, handler_train_dic = register_hooks(model, model_dir, f"{concept_name}_train")
+        X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, True, 200)
+        model(torch.from_numpy(X_train).to(device))
+        remove_all_hooks(handler_train_dic)
+        # Save representations for testing concept examples and then remove the hooks
+        module_dic, handler_test_dic = register_hooks(model, model_dir, f"{concept_name}_test")
+        X_test, y_test = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, False, 50)
+        model(torch.from_numpy(X_test).to(device))
+        remove_all_hooks(handler_test_dic)
+        # Create concept classifiers, fit them and test them for each representation space
+        for module_name in module_dic:
+            logging.info(f"Fitting concept classifiers for {module_name}")
+            car = CAR(device)
+            cav = CAV(device)
+            hook_name = f"{concept_name}_train_{module_name}"
+            H_train = get_saved_representations(hook_name, model_dir)
+            car.fit(H_train, y_train)
+            cav.fit(H_train, y_train)
+            hook_name = f"{concept_name}_test_{module_name}"
+            H_test = get_saved_representations(hook_name, model_dir)
+            results_data.append([concept_name, module_name, "CAR", accuracy_score(y_train, car.predict(H_train)),
+                                 accuracy_score(y_test, car.predict(H_test))])
+            results_data.append([concept_name, module_name, "CAV", accuracy_score(y_train, cav.predict(H_train)),
+                                 accuracy_score(y_test, cav.predict(H_test))])
+    results_df = pd.DataFrame(results_data, columns=["Concept", "Layer", "Method", "Train ACC", "Test ACC"])
+    csv_path = save_dir/"metrics.csv"
+    csv_inexistent = not csv_path.exists()
+    results_df.to_csv(csv_path, header=csv_inexistent, mode="a", index=False)
 
 
 if __name__ == "__main__":
