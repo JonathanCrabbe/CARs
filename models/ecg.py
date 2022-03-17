@@ -151,7 +151,8 @@ class ClassifierECG(nn.Module):
         torch.save(self.state_dict(), path_to_model)
 
     def load_metadata(self, directory: pathlib.Path) -> dict:
-        """Load the metadata of a training directory.
+        """
+        Load the metadata of a training directory.
         Parameters
         ----------
         directory : pathlib.Path
@@ -164,7 +165,8 @@ class ClassifierECG(nn.Module):
         return metadata
 
     def save_metadata(self, directory: pathlib.Path, **kwargs) -> None:
-        """Load the metadata of a training directory.
+        """
+        Load the metadata of a training directory.
         Parameters
         ----------
         directory: string
@@ -180,4 +182,4 @@ class ClassifierECG(nn.Module):
             json.dump(metadata, f, indent=4, sort_keys=True, **kwargs)
 
     def get_hooked_modules(self) -> dict[str, nn.Module]:
-        return {"Conv1": self.maxpool1, "Conv2": self.maxpool2, "Lin1": self.fc1, "Lin2": self.fc2}
+        return {"Conv1": self.maxpool1, "Conv2": self.maxpool2, "Conv3": self.maxpool3, "Lin": self.fc1}

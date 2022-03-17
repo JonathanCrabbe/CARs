@@ -12,11 +12,12 @@ def plot_concept_accuracy(results_dir: Path, concept: str) -> None:
         metrics_df = metrics_df[metrics_df.Concept == concept]
     sns.boxplot(data=metrics_df, x="Layer", y="Test ACC", hue="Method")
     if concept:
-        plt.ylabel(f"Concept {concept} accuracy")
+        plt.ylabel(f"Concept {concept} Accuracy")
         plt.savefig(results_dir/f"{concept}_acc.pdf")
     else:
-        plt.ylabel(f"Overall concept accuracy")
+        plt.ylabel(f"Overall Concept Accuracy")
         plt.savefig(results_dir / f"overall_acc.pdf")
+    plt.close()
 
 
 if __name__ == "__main__":

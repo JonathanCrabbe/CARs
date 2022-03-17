@@ -10,11 +10,12 @@ from torchvision.datasets import MNIST
 from torchvision import transforms
 from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
 from utils.dataset import generate_mnist_concept_dataset
+from utils.plot import plot_concept_accuracy
 from explanations.concept import CAR, CAV
 from sklearn.metrics import accuracy_score
 
-concept_to_class = {"loop": [0, 6, 8, 9], "straight_lines": [1, 4, 7], "mirror_symmetry": [0, 3,  8],
-                    "tail": [2, 3, 5, 9]}
+concept_to_class = {"Loop": [0, 6, 8, 9], "Straight Lines": [1, 4, 7], "Mirror Symmetry": [0, 3,  8],
+                    "Tail": [2, 3, 5, 9]}
 
 
 def concept_accuracy(random_seeds: list[int], batch_size: int, latent_dim: int, train: bool,
@@ -87,9 +88,15 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=120)
     parser.add_argument("--latent_dim", type=int, default=5)
     parser.add_argument("--train", action='store_true')
+    parser.add_argument("--plot", action='store_true')
     args = parser.parse_args()
     if args.name == "concept_accuracy":
-        concept_accuracy(args.seeds, args.batch_size, args.latent_dim, args.train)
+        save_dir = Path.cwd() / "results/mnist/concept_accuracy"
+        concept_accuracy(args.seeds, args.batch_size, args.latent_dim, args.train, save_dir=save_dir)
+        if args.plot:
+            plot_concept_accuracy(save_dir, None)
+            for concept in concept_to_class:
+                plot_concept_accuracy(save_dir, concept)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 
