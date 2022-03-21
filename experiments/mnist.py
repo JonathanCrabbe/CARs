@@ -18,28 +18,38 @@ concept_to_class = {"Loop": [0, 6, 8, 9], "Straight Lines": [1, 4, 7], "Mirror S
                     "Tail": [2, 3, 5, 9]}
 
 
+def train_mnist_model(latent_dim: int, model_name: str, model_dir: Path,
+                      data_dir: Path, device: torch.device, batch_size: int) -> None:
+    logging.info("Fitting MNIST classifier")
+    model = ClassifierMnist(latent_dim, model_name).to(device)
+    train_set = MNIST(data_dir, train=True, download=True)
+    test_set = MNIST(data_dir, train=False, download=True)
+    train_transform = transforms.Compose([transforms.ToTensor()])
+    test_transform = transforms.Compose([transforms.ToTensor()])
+    train_set.transform = train_transform
+    test_set.transform = test_transform
+    train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
+    model.fit(device, train_loader, test_loader, model_dir)
+
+
 def concept_accuracy(random_seeds: list[int], batch_size: int, latent_dim: int, train: bool,
                      save_dir: Path = Path.cwd()/"results/mnist/concept_accuracy",
-                     data_dir: Path = Path.cwd()/"data/mnist", model_name: str = "model") -> None:
+                     data_dir: Path = Path.cwd()/"data/mnist",
+                     model_name: str = "model") -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     torch.manual_seed(random_seeds[0])
-    model_dir = save_dir / model_name
-    if not save_dir.exists():
-        os.makedirs(save_dir)
+    model_dir = Path.cwd()/f"results/mnist/{model_name}"
+    representation_dir = save_dir/f"{model_name}_representations"
+    if not representation_dir.exists():
+        os.makedirs(representation_dir)
+    if not model_dir.exists():
+        os.makedirs(model_dir)
 
     # Train MNIST Classifier
-    model = ClassifierMnist(latent_dim, model_name)
     if train:
-        logging.info("Fitting MNIST classifier")
-        train_set = MNIST(data_dir, train=True, download=True)
-        test_set = MNIST(data_dir, train=False, download=True)
-        train_transform = transforms.Compose([transforms.ToTensor()])
-        test_transform = transforms.Compose([transforms.ToTensor()])
-        train_set.transform = train_transform
-        test_set.transform = test_transform
-        train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size)
-        test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
-        model.fit(device, train_loader, test_loader, model_dir)
+        train_mnist_model(latent_dim, model_name, model_dir, data_dir, device, batch_size)
+    model = ClassifierMnist(latent_dim, model_name)
     model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
     model.to(device)
     model.eval()
@@ -49,12 +59,14 @@ def concept_accuracy(random_seeds: list[int], batch_size: int, latent_dim: int, 
     for concept_name, random_seed in itertools.product(concept_to_class, random_seeds):
         logging.info(f"Working with concept {concept_name} and seed {random_seed}")
         # Save representations for training concept examples and then remove the hooks
-        module_dic, handler_train_dic = register_hooks(model, model_dir, f"{concept_name}_seed{random_seed}_train")
-        X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, True, 200, random_seed)
+        module_dic, handler_train_dic = register_hooks(model, representation_dir,
+                                                       f"{concept_name}_seed{random_seed}_train")
+        X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir,
+                                                          True, 200, random_seed)
         model(torch.from_numpy(X_train).to(device))
         remove_all_hooks(handler_train_dic)
         # Save representations for testing concept examples and then remove the hooks
-        module_dic, handler_test_dic = register_hooks(model, model_dir, f"{concept_name}_seed{random_seed}_test")
+        module_dic, handler_test_dic = register_hooks(model, representation_dir, f"{concept_name}_seed{random_seed}_test")
         X_test, y_test = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, False, 50, random_seed)
         model(torch.from_numpy(X_test).to(device))
         remove_all_hooks(handler_test_dic)
@@ -64,11 +76,11 @@ def concept_accuracy(random_seeds: list[int], batch_size: int, latent_dim: int, 
             car = CAR(device)
             cav = CAV(device)
             hook_name = f"{concept_name}_seed{random_seed}_train_{module_name}"
-            H_train = get_saved_representations(hook_name, model_dir)
+            H_train = get_saved_representations(hook_name, representation_dir)
             car.fit(H_train, y_train)
             cav.fit(H_train, y_train)
             hook_name = f"{concept_name}_seed{random_seed}_test_{module_name}"
-            H_test = get_saved_representations(hook_name, model_dir)
+            H_test = get_saved_representations(hook_name, representation_dir)
             results_data.append([concept_name, module_name, random_seed, "CAR",
                                  accuracy_score(y_train, car.predict(H_train)),
                                  accuracy_score(y_test, car.predict(H_test))])
@@ -84,7 +96,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default="concept_accuracy")
-    parser.add_argument('--seeds', nargs="+", type=int, default=[1, 2, 3, 4, 5])
+    parser.add_argument('--seeds', nargs="+", type=int, default=list(range(1, 10)))
     parser.add_argument("--batch_size", type=int, default=120)
     parser.add_argument("--latent_dim", type=int, default=5)
     parser.add_argument("--train", action='store_true')
