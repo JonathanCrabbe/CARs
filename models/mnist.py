@@ -57,6 +57,11 @@ class ClassifierMnist(nn.Module):
         x = self.fc2(x)
         return x
 
+    def representation_to_output(self, h):
+        h = self.dropout(h)
+        h = self.out(h)
+        return h
+
     def train_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader,
                     optimizer: torch.optim.Optimizer) -> np.ndarray:
         """

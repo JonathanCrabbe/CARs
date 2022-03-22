@@ -1,7 +1,8 @@
 import abc
 import numpy as np
-from abc import ABC
 import torch
+import torch.nn.functional as F
+from abc import ABC
 from sklearn.svm import SVC
 from sklearn.linear_model import SGDClassifier
 
@@ -141,14 +142,25 @@ class CAV(ConceptExplainer, ABC):
         """
         return self.classifier.predict(latent_reps)
 
-    def concept_importance(self, latent_reps: np.ndarray) -> np.ndarray:
+    def concept_importance(self, latent_reps: np.ndarray, labels: torch.Tensor = None, num_classes: int = None,
+                           rep_to_output: callable = None) -> np.ndarray:
         """
         Predicts the relevance of a concept for the latent representations
         Args:
             latent_reps: representations of the test examples
+            labels: the labels associated to the representations one-hot encoded
+            num_classes: the number of classes
+            rep_to_output: black-box mapping the representation space to the output space
         Returns:
             concepts scores for each example
         """
+        one_hot_labels = F.one_hot(labels, num_classes).to(self.device)
+        latent_reps = torch.from_numpy(latent_reps).to(self.device).requires_grad_()
+        outputs = rep_to_output(latent_reps)
+        grads = torch.autograd.grad(outputs, latent_reps, grad_outputs=one_hot_labels)
+        cav = torch.tensor(self.classifier.coef_).to(self.device).float()
+        return torch.einsum("bi,bi->b", cav, grads[0]).detach().cpu().numpy()
+
 
 
 

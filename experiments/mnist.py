@@ -10,7 +10,7 @@ from torchvision.datasets import MNIST
 from torchvision import transforms
 from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
 from utils.dataset import generate_mnist_concept_dataset
-from utils.plot import plot_concept_accuracy
+from utils.plot import plot_concept_accuracy, plot_global_explanation
 from explanations.concept import CAR, CAV
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
@@ -34,10 +34,10 @@ def train_mnist_model(latent_dim: int, model_name: str, model_dir: Path,
     model.fit(device, train_loader, test_loader, model_dir)
 
 
-def concept_accuracy(random_seeds: list[int], batch_size: int, latent_dim: int, train: bool,
+def concept_accuracy(random_seeds: list[int], batch_size: int, latent_dim: int, train: bool, plot: bool,
                      save_dir: Path = Path.cwd()/"results/mnist/concept_accuracy",
                      data_dir: Path = Path.cwd()/"data/mnist",
-                     model_name: str = "model") -> None:
+                     model_name: str = "model",) -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     torch.manual_seed(random_seeds[0])
     model_dir = Path.cwd()/f"results/mnist/{model_name}"
@@ -91,9 +91,13 @@ def concept_accuracy(random_seeds: list[int], batch_size: int, latent_dim: int, 
     results_df = pd.DataFrame(results_data, columns=["Concept", "Layer", "Seed", "Method", "Train ACC", "Test ACC"])
     csv_path = save_dir/"metrics.csv"
     results_df.to_csv(csv_path, header=True, mode="w", index=False)
+    if plot:
+        plot_concept_accuracy(save_dir, None)
+        for concept in concept_to_class:
+            plot_concept_accuracy(save_dir, concept)
 
 
-def global_explanations(random_seed: int, batch_size: int, latent_dim: int, train: bool,
+def global_explanations(random_seed: int, batch_size: int, latent_dim: int, train: bool, plot:bool,
                         save_dir: Path = Path.cwd()/"results/mnist/global_explanations",
                         data_dir: Path = Path.cwd()/"data/mnist",
                         model_name: str = "model") -> None:
@@ -134,13 +138,19 @@ def global_explanations(random_seed: int, batch_size: int, latent_dim: int, trai
     for X_test, y_test in tqdm(test_loader, unit="batch", leave=False):
         H_test = model.input_to_representation(X_test.to(device)).detach().cpu().numpy()
         car_preds = [car.predict(H_test) for car in car_classifiers]
-        for k in range(len(y_test)):
-            for concept_name, car_pred in zip(concept_to_class, car_preds):
-                if car_pred[k] > 0:
-                    results_data.append(["TCAR", y_test[k].item(), concept_name])
+        cav_preds = [cav.concept_importance(H_test, y_test, 10, model.representation_to_output)
+                     for cav in cav_classifiers]
+
+        results_data += [["TCAR", label.item()] + [int(car_pred[idx]) for car_pred in car_preds]
+                         for idx, label in enumerate(y_test)]
+        results_data += [["TCAV", label.item()] + [int(cav_pred[idx] > 0) for cav_pred in cav_preds]
+                         for idx, label in enumerate(y_test)]
+
     csv_path = save_dir / "metrics.csv"
-    results_df = pd.DataFrame(results_data, columns=["Method", "Class", "Concept"])
+    results_df = pd.DataFrame(results_data, columns=["Method", "Class"]+list(concept_to_class.keys()))
     results_df.to_csv(csv_path, index=False)
+    if plot:
+        plot_global_explanation(save_dir)
 
 
 if __name__ == "__main__":
@@ -154,15 +164,9 @@ if __name__ == "__main__":
     parser.add_argument("--plot", action='store_true')
     args = parser.parse_args()
     if args.name == "concept_accuracy":
-        save_dir = Path.cwd() / "results/mnist/concept_accuracy"
-        concept_accuracy(args.seeds, args.batch_size, args.latent_dim, args.train, save_dir=save_dir)
-        if args.plot:
-            plot_concept_accuracy(save_dir, None)
-            for concept in concept_to_class:
-                plot_concept_accuracy(save_dir, concept)
+        concept_accuracy(args.seeds, args.batch_size, args.latent_dim, args.train, args.plot)
     elif args.name == "global_explanations":
-        save_dir = Path.cwd() / "results/mnist/global_explanations"
-        global_explanations(args.seeds[0], args.batch_size, args.latent_dim, args.train, save_dir=save_dir)
+        global_explanations(args.seeds[0], args.batch_size, args.latent_dim, args.train, args.plot)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 

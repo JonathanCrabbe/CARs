@@ -38,6 +38,23 @@ class ClassifierECG(nn.Module):
         x = self.out(x)
         return x
 
+    def input_to_representation(self, x):
+        x = x.unsqueeze(1)
+        x = self.cnn1(x)
+        x = self.maxpool1(x)
+        x = self.cnn2(x)
+        x = self.maxpool2(x)
+        x = self.cnn3(x)
+        x = self.maxpool3(x)
+        x = x.view(x.shape[0], -1)
+        x = self.fc1(x)
+        x = self.leaky_relu(x)
+        return x
+
+    def representation_to_output(self, h):
+        h = self.out(h)
+        return h
+
     def train_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader,
                     optimizer: torch.optim.Optimizer) -> np.ndarray:
         """
