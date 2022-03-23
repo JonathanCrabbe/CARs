@@ -123,20 +123,24 @@ def global_explanations(random_seed: int, batch_size: int, latent_dim: int, trai
         car_classifier.fit(H_train, y_train)
         cav_classifier.fit(H_train, y_train)
 
-    test_set = ECGDataset(data_dir, train=False, balance_dataset=False, random_seed=random_seed)
+    test_set = ECGDataset(data_dir, train=False, balance_dataset=False, random_seed=random_seed, binarize_label=False)
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
     logging.info("Now predicting concepts on the test set")
     for X_test, y_test in tqdm(test_loader, unit="batch", leave=False):
+        y_test_binary = torch.where(y_test == 0, 0, 1)
         H_test = model.input_to_representation(X_test.to(device)).detach().cpu().numpy()
         car_preds = [car.predict(H_test) for car in car_classifiers]
-        cav_preds = [cav.concept_importance(H_test, y_test, 2, model.representation_to_output)
+        cav_preds = [cav.concept_importance(H_test, y_test_binary, 2, model.representation_to_output)
                      for cav in cav_classifiers]
+        targets = [[int(label == concept_to_class[concept]) for label in y_test] for concept in concept_to_class]
 
         results_data += [["TCAR", label.item()] + [int(car_pred[idx]) for car_pred in car_preds]
-                         for idx, label in enumerate(y_test)]
+                         for idx, label in enumerate(y_test_binary)]
         results_data += [["TCAV", label.item()] + [int(cav_pred[idx] > 0) for cav_pred in cav_preds]
-                         for idx, label in enumerate(y_test)]
+                         for idx, label in enumerate(y_test_binary)]
+        results_data += [["Truth", label.item()] + [target[idx] for target in targets]
+                         for idx, label in enumerate(y_test_binary)]
 
     csv_path = save_dir / "metrics.csv"
     results_df = pd.DataFrame(results_data, columns=["Method", "Class"]+list(concept_to_class.keys()))

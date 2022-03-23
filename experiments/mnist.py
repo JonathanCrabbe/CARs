@@ -15,8 +15,8 @@ from explanations.concept import CAR, CAV
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
 
-concept_to_class = {"Loop": [0, 6, 8, 9], "Straight Lines": [1, 4, 7], "Mirror Symmetry": [0, 3,  8],
-                    "Tail": [2, 3, 5, 9]}
+concept_to_class = {"Loop": [0, 2, 6, 8, 9], "Mirror Symmetry": [0, 3,  8], "Vertical Line": [1, 4, 7],
+                    "Horizontal Line": [4, 5, 7], "Curvature": [0, 2, 3, 5, 6, 8, 9]}
 
 
 def train_mnist_model(latent_dim: int, model_name: str, model_dir: Path,
@@ -140,10 +140,13 @@ def global_explanations(random_seed: int, batch_size: int, latent_dim: int, trai
         car_preds = [car.predict(H_test) for car in car_classifiers]
         cav_preds = [cav.concept_importance(H_test, y_test, 10, model.representation_to_output)
                      for cav in cav_classifiers]
+        targets = [[int(label in concept_to_class[concept]) for label in y_test] for concept in concept_to_class]
 
         results_data += [["TCAR", label.item()] + [int(car_pred[idx]) for car_pred in car_preds]
                          for idx, label in enumerate(y_test)]
         results_data += [["TCAV", label.item()] + [int(cav_pred[idx] > 0) for cav_pred in cav_preds]
+                         for idx, label in enumerate(y_test)]
+        results_data += [["Truth", label.item()] + [target[idx] for target in targets]
                          for idx, label in enumerate(y_test)]
 
     csv_path = save_dir / "metrics.csv"
