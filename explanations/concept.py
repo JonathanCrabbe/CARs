@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from abc import ABC
 from sklearn.svm import SVC
 from sklearn.linear_model import SGDClassifier
+from sklearn.model_selection import permutation_test_score
 
 
 class ConceptExplainer(ABC):
@@ -49,6 +50,21 @@ class ConceptExplainer(ABC):
             latent_reps: representations of the test examples
         Returns:
             concepts scores for each example
+        """
+
+    @abc.abstractmethod
+    def permutation_test(self, concept_reps: np.ndarray, concept_labels: np.ndarray,
+                         n_perm: int = 100, n_jobs: int = -1) -> float:
+        """
+        Computes the p-value of the concept-label permutation test
+        Args:
+            concept_labels: concept labels indicating the presence (1) or absence (0) of the concept
+            concept_reps: representation of the examples
+            n_perm: number of permutations
+            n_jobs: number of jobs running in parallel
+
+        Returns:
+            p-value of the statistical significance test
         """
 
     def get_concept_reps(self, positive_set: bool):
@@ -98,6 +114,24 @@ class CAR(ConceptExplainer, ABC):
         Returns:
             concepts scores for each example
         """
+
+    def permutation_test(self, concept_reps: np.ndarray, concept_labels: np.ndarray,
+                         n_perm: int = 100, n_jobs: int = -1) -> float:
+        """
+               Computes the p-value of the concept-label permutation test
+               Args:
+                   concept_labels: concept labels indicating the presence (1) or absence (0) of the concept
+                   concept_reps: representation of the examples
+                   n_perm: number of permutations
+                   n_jobs: number of jobs running in parallel
+
+               Returns:
+                   p-value of the statistical significance test
+        """
+        classifier = SVC(kernel=self.kernel)
+        score, permutation_scores, p_value = permutation_test_score(classifier, concept_reps, concept_labels,
+                                                                    n_permutations=n_perm, n_jobs=n_jobs)
+        return p_value
 
     def get_kernel_function(self) -> callable:
         """
@@ -160,6 +194,24 @@ class CAV(ConceptExplainer, ABC):
         grads = torch.autograd.grad(outputs, latent_reps, grad_outputs=one_hot_labels)
         cav = torch.tensor(self.classifier.coef_).to(self.device).float()
         return torch.einsum("bi,bi->b", cav, grads[0]).detach().cpu().numpy()
+
+    def permutation_test(self, concept_reps: np.ndarray, concept_labels: np.ndarray,
+                         n_perm: int = 100, n_jobs: int = -1) -> float:
+        """
+               Computes the p-value of the concept-label permutation test
+               Args:
+                   concept_labels: concept labels indicating the presence (1) or absence (0) of the concept
+                   concept_reps: representation of the examples
+                   n_perm: number of permutations
+                   n_jobs: number of jobs running in parallel
+
+               Returns:
+                   p-value of the statistical significance test
+        """
+        classifier = SGDClassifier(alpha=0.01, max_iter=1000, tol=1e-3)
+        score, permutation_scores, p_value = permutation_test_score(classifier, concept_reps, concept_labels,
+                                                                    n_permutations=n_perm, n_jobs=n_jobs)
+        return p_value
 
 
 

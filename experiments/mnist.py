@@ -19,9 +19,14 @@ concept_to_class = {"Loop": [0, 2, 6, 8, 9], "Mirror Symmetry": [0, 3,  8], "Ver
                     "Horizontal Line": [4, 5, 7], "Curvature": [0, 2, 3, 5, 6, 8, 9]}
 
 
-def train_mnist_model(latent_dim: int, model_name: str, model_dir: Path,
-                      data_dir: Path, device: torch.device, batch_size: int) -> None:
+def train_mnist_model(latent_dim: int, batch_size: int, model_name: str = "model",
+                      model_dir: Path = Path.cwd()/f"results/mnist/",
+                      data_dir: Path = Path.cwd()/"data/mnist") -> None:
     logging.info("Fitting MNIST classifier")
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    model_dir = model_dir/model_name
+    if not model_dir.exists():
+        os.makedirs(model_dir)
     model = ClassifierMnist(latent_dim, model_name).to(device)
     train_set = MNIST(data_dir, train=True, download=True)
     test_set = MNIST(data_dir, train=False, download=True)
@@ -34,22 +39,19 @@ def train_mnist_model(latent_dim: int, model_name: str, model_dir: Path,
     model.fit(device, train_loader, test_loader, model_dir)
 
 
-def concept_accuracy(random_seeds: list[int], batch_size: int, latent_dim: int, train: bool, plot: bool,
+def concept_accuracy(random_seeds: list[int], latent_dim: int, plot: bool,
                      save_dir: Path = Path.cwd()/"results/mnist/concept_accuracy",
                      data_dir: Path = Path.cwd()/"data/mnist",
+                     model_dir: Path = Path.cwd() / f"results/mnist/",
                      model_name: str = "model",) -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     torch.manual_seed(random_seeds[0])
-    model_dir = Path.cwd()/f"results/mnist/{model_name}"
+
     representation_dir = save_dir/f"{model_name}_representations"
     if not representation_dir.exists():
         os.makedirs(representation_dir)
-    if not model_dir.exists():
-        os.makedirs(model_dir)
 
-    # Train MNIST Classifier
-    if train:
-        train_mnist_model(latent_dim, model_name, model_dir, data_dir, device, batch_size)
+    model_dir = model_dir/model_name
     model = ClassifierMnist(latent_dim, model_name)
     model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
     model.to(device)
@@ -97,21 +99,62 @@ def concept_accuracy(random_seeds: list[int], batch_size: int, latent_dim: int, 
             plot_concept_accuracy(save_dir, concept)
 
 
-def global_explanations(random_seed: int, batch_size: int, latent_dim: int, train: bool, plot:bool,
+def statistical_significance(random_seed: int,  latent_dim: int,
+                             save_dir: Path = Path.cwd()/"results/mnist/statistical_significance",
+                             data_dir: Path = Path.cwd()/"data/mnist",
+                             model_dir: Path = Path.cwd()/"results/mnist",
+                             model_name: str = "model",) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    torch.manual_seed(random_seed)
+    model_dir = model_dir/model_name
+    representation_dir = save_dir/f"{model_name}_representations"
+    if not representation_dir.exists():
+        os.makedirs(representation_dir)
+
+    model = ClassifierMnist(latent_dim, model_name)
+    model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
+    model.to(device)
+    model.eval()
+
+    # Fit a concept classifier and test accuracy for each concept
+    results_data = []
+    for concept_name in concept_to_class:
+        logging.info(f"Working with concept {concept_name} ")
+        # Save representations for training concept examples and then remove the hooks
+        module_dic, handler_train_dic = register_hooks(model, representation_dir,
+                                                       f"{concept_name}_seed{random_seed}_train")
+        X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir,
+                                                          True, 200, random_seed)
+        model(torch.from_numpy(X_train).to(device))
+        remove_all_hooks(handler_train_dic)
+
+        # Create concept classifiers, fit them and test them for each representation space
+        for module_name in module_dic:
+            logging.info(f"Testing concept classifiers for {module_name}")
+            car = CAR(device)
+            cav = CAV(device)
+            hook_name = f"{concept_name}_seed{random_seed}_train_{module_name}"
+            H_train = get_saved_representations(hook_name, representation_dir)
+            results_data.append([concept_name, module_name, "CAR", car.permutation_test(H_train, y_train)])
+            results_data.append([concept_name, module_name, "CAV", cav.permutation_test(H_train, y_train)])
+
+    results_df = pd.DataFrame(results_data, columns=["Concept", "Layer",  "Method", "p-value"])
+    csv_path = save_dir / "metrics.csv"
+    results_df.to_csv(csv_path, header=True, mode="w", index=False)
+
+
+def global_explanations(random_seed: int, batch_size: int, latent_dim: int,  plot: bool,
                         save_dir: Path = Path.cwd()/"results/mnist/global_explanations",
                         data_dir: Path = Path.cwd()/"data/mnist",
+                        model_dir: Path = Path.cwd() / f"results/mnist",
                         model_name: str = "model") -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     torch.manual_seed(random_seed)
-    model_dir = Path.cwd()/f"results/mnist/{model_name}"
+
     if not save_dir.exists():
         os.makedirs(save_dir)
-    if not model_dir.exists():
-        os.makedirs(model_dir)
 
-    # Train MNIST Classifier
-    if train:
-        train_mnist_model(latent_dim, model_name, model_dir, data_dir, device, batch_size)
+    model_dir = model_dir/model_name
     model = ClassifierMnist(latent_dim, model_name)
     model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
     model.to(device)
@@ -166,10 +209,15 @@ if __name__ == "__main__":
     parser.add_argument("--train", action='store_true')
     parser.add_argument("--plot", action='store_true')
     args = parser.parse_args()
+
+    if args.train:
+        train_mnist_model(args.latent_dim,  args.batch_size, model_name="model_test")
     if args.name == "concept_accuracy":
-        concept_accuracy(args.seeds, args.batch_size, args.latent_dim, args.train, args.plot)
+        concept_accuracy(args.seeds, args.latent_dim, args.plot)
     elif args.name == "global_explanations":
-        global_explanations(args.seeds[0], args.batch_size, args.latent_dim, args.train, args.plot)
+        global_explanations(args.seeds[0], args.batch_size, args.latent_dim,  args.plot)
+    elif args.name == "statistical_significance":
+        statistical_significance(args.seeds[0], args.latent_dim)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 
