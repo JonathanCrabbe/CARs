@@ -87,9 +87,9 @@ def concept_accuracy(random_seeds: list[int],  latent_dim: int, plot: bool,
     csv_path = save_dir / "metrics.csv"
     results_df.to_csv(csv_path, header=True, mode="w", index=False)
     if plot:
-        plot_concept_accuracy(save_dir, None)
+        plot_concept_accuracy(save_dir, None, "ecg")
         for concept in concept_to_class:
-            plot_concept_accuracy(save_dir, concept)
+            plot_concept_accuracy(save_dir, concept, "ecg")
 
 
 def statistical_significance(random_seed: int,  latent_dim: int,
@@ -182,14 +182,14 @@ def global_explanations(random_seed: int, batch_size: int, latent_dim: int,  plo
                          for idx, label in enumerate(y_test_binary)]
         results_data += [["TCAV", label.item()] + [int(cav_pred[idx] > 0) for cav_pred in cav_preds]
                          for idx, label in enumerate(y_test_binary)]
-        results_data += [["Truth", label.item()] + [target[idx] for target in targets]
+        results_data += [["True Prop.", label.item()] + [target[idx] for target in targets]
                          for idx, label in enumerate(y_test_binary)]
 
     csv_path = save_dir / "metrics.csv"
     results_df = pd.DataFrame(results_data, columns=["Method", "Class"]+list(concept_to_class.keys()))
     results_df.to_csv(csv_path, index=False)
     if plot:
-        plot_global_explanation(save_dir)
+        plot_global_explanation(save_dir, "ecg")
 
 
 if __name__ == "__main__":

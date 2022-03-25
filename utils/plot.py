@@ -9,21 +9,27 @@ import numpy as np
 from pathlib import Path
 
 
-def plot_concept_accuracy(results_dir: Path, concept: str) -> None:
+def plot_concept_accuracy(results_dir: Path, concept: str, dataset_name: str) -> None:
+    sns.set(font_scale=1.5)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
     metrics_df = pd.read_csv(results_dir/"metrics.csv")
     if concept:
         metrics_df = metrics_df[metrics_df.Concept == concept]
     sns.boxplot(data=metrics_df, x="Layer", y="Test ACC", hue="Method")
     if concept:
         plt.ylabel(f"Concept {concept} Accuracy")
-        plt.savefig(results_dir/f"{concept}_acc.pdf")
+        plt.savefig(results_dir/f"{dataset_name}_{concept}_acc.pdf")
     else:
         plt.ylabel(f"Overall Concept Accuracy")
-        plt.savefig(results_dir / f"overall_concept_acc.pdf")
+        plt.savefig(results_dir / f"{dataset_name}_concept_acc.pdf")
     plt.close()
 
 
-def plot_global_explanation(results_dir: Path) -> None:
+def plot_global_explanation(results_dir: Path, dataset_name: str) -> None:
+    sns.set(font_scale=1.2)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
     metrics_df = pd.read_csv(results_dir / "metrics.csv")
     concepts = list(metrics_df.columns[2:])
     classes = metrics_df["Class"].unique()
@@ -40,8 +46,13 @@ def plot_global_explanation(results_dir: Path) -> None:
         plt.title(f"Class: {class_idx}")
         plt.ylim(bottom=0, top=1.1)
         plt.tight_layout()
-        plt.savefig(results_dir / f"global_class{class_idx}.pdf")
+        plt.savefig(results_dir / f"{dataset_name}_global_class{class_idx}.pdf")
         plt.close()
+    tcar_scores = plot_df.loc[plot_df.Method == "TCAR"]["Score"]
+    tcav_scores = plot_df.loc[plot_df.Method == "TCAV"]["Score"]
+    true_scores = plot_df.loc[plot_df.Method == "True Prop."]["Score"]
+    logging.info(f"TCAR-True Prop. Correlation: {np.corrcoef(tcar_scores, true_scores)[0, 1]:.2g}")
+    logging.info(f"TCAV-True Prop. Correlation: {np.corrcoef(tcav_scores, true_scores)[0, 1]:.2g}")
 
 
 def wrap_labels(ax, width, break_long_words=False):
@@ -62,13 +73,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     save_path = Path.cwd()/f"results/{args.dataset}/{args.name}"
     logging.info(f"Saving {args.name} plot for {args.dataset} in {str(save_path)}")
-    sns.set()
-    sns.color_palette("colorblind")
-    sns.set_style("white")
     if args.name == "concept_accuracy":
-        plot_concept_accuracy(save_path, args.concept)
+        plot_concept_accuracy(save_path, args.concept, args.dataset)
     elif args.name == "global_explanations":
-        plot_global_explanation(save_path)
+        plot_global_explanation(save_path, args.dataset)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 
