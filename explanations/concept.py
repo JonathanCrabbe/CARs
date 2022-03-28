@@ -43,7 +43,7 @@ class ConceptExplainer(ABC):
         """
 
     @abc.abstractmethod
-    def concept_importance(self, latent_reps: np.ndarray) -> np.ndarray:
+    def concept_importance(self, latent_reps):
         """
         Predicts the relevance of a concept for the latent representations
         Args:
@@ -78,6 +78,7 @@ class ConceptExplainer(ABC):
         return self.concept_reps[self.concept_labels == int(positive_set)]
 
 
+
 class CAR(ConceptExplainer, ABC):
     def __init__(self, device: torch.device, batch_size: int = 50, kernel: str = 'rbf'):
         super(CAR, self).__init__(device, batch_size)
@@ -87,8 +88,7 @@ class CAR(ConceptExplainer, ABC):
         """
         Fit the concept classifier to the dataset (latent_reps, concept_labels)
         Args:
-            kernel: kernel function
-            latent_reps: latent representations of the examples illustrating the concept
+            concept_reps: latent representations of the examples illustrating the concept
             concept_labels: labels indicating the presence (1) or absence (0) of the concept
         """
         super(CAR, self).fit(concept_reps, concept_labels)
@@ -106,7 +106,7 @@ class CAR(ConceptExplainer, ABC):
         """
         return self.classifier.predict(latent_reps)
 
-    def concept_importance(self, latent_reps: np.ndarray) -> np.ndarray:
+    def concept_importance(self, latent_reps: torch.Tensor) -> torch.Tensor:
         """
         Predicts the relevance of a concept for the latent representations
         Args:
@@ -114,6 +114,7 @@ class CAR(ConceptExplainer, ABC):
         Returns:
             concepts scores for each example
         """
+        return self.concept_density(latent_reps)
 
     def permutation_test(self, concept_reps: np.ndarray, concept_labels: np.ndarray,
                          n_perm: int = 100, n_jobs: int = -1) -> float:
@@ -140,13 +141,29 @@ class CAR(ConceptExplainer, ABC):
         """
         # The implementation should unstack one tensor to return a kernel matrix of shape len(h1) x len(h2)!
         if self.kernel == 'rbf':
-            latent_reps_std = torch.from_numpy(np.std(self.latent_reps, axis=0)).to(self.device)
-            latent_dim = self.latent_reps.shape[-1]
-            return lambda h1, h2: torch.exp(-torch.sum(((h1 - h2)/(latent_dim*latent_reps_std))**2, dim=-1))
+            latent_reps_std = torch.from_numpy(np.std(self.concept_reps, axis=0)).to(self.device)
+            latent_dim = self.concept_reps.shape[1]
+            return lambda h1, h2: torch.exp(-torch.sum(((h1.unsqueeze(1) - h2.unsqueeze(0)) /
+                                                        (latent_dim*latent_reps_std))**2, dim=-1))
 
-    def concept_density(self, latent_reps: np.ndarray, positive_set: bool) -> np.ndarray:
+    def concept_density(self, latent_reps: torch.Tensor, positive_set: bool = None) -> torch.Tensor:
+        """
+        Computes the concept density for the given latent representations
+        Args:
+            latent_reps:
+            positive_set:
+
+        Returns:
+
+        """
         kernel = self.get_kernel_function()
-        ...
+        latent_reps = latent_reps.to(self.device)
+        if positive_set is not None:
+            concept_reps = torch.from_numpy(self.get_concept_reps(positive_set)).to(self.device)
+        else:
+            concept_reps = torch.from_numpy(self.concept_reps).to(self.device)
+        return kernel(concept_reps, latent_reps).mean(dim=0)
+
 
 
 class CAV(ConceptExplainer, ABC):
