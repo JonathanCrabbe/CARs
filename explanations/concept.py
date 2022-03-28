@@ -114,7 +114,9 @@ class CAR(ConceptExplainer, ABC):
         Returns:
             concepts scores for each example
         """
-        return self.concept_density(latent_reps)
+        pos_density = self.concept_density(latent_reps, True)
+        neg_density = self.concept_density(latent_reps, False)
+        return pos_density - neg_density
 
     def permutation_test(self, concept_reps: np.ndarray, concept_labels: np.ndarray,
                          n_perm: int = 100, n_jobs: int = -1) -> float:
@@ -141,28 +143,29 @@ class CAR(ConceptExplainer, ABC):
         """
         # The implementation should unstack one tensor to return a kernel matrix of shape len(h1) x len(h2)!
         if self.kernel == 'rbf':
-            latent_reps_std = torch.from_numpy(np.std(self.concept_reps, axis=0)).to(self.device)
-            latent_dim = self.concept_reps.shape[1]
+            #latent_reps_std = torch.from_numpy(np.std(self.concept_reps, axis=0)).to(self.device).unsqueeze(0).unsqueeze(0)
+            latent_reps_std = 1
+            latent_dim = self.concept_reps.shape[-1]
             return lambda h1, h2: torch.exp(-torch.sum(((h1.unsqueeze(1) - h2.unsqueeze(0)) /
                                                         (latent_dim*latent_reps_std))**2, dim=-1))
 
-    def concept_density(self, latent_reps: torch.Tensor, positive_set: bool = None) -> torch.Tensor:
+    def concept_density(self, latent_reps: torch.Tensor, positive_set: bool) -> torch.Tensor:
         """
         Computes the concept density for the given latent representations
         Args:
-            latent_reps:
-            positive_set:
+            latent_reps: latent representations for which the concept density should be evaluated
+            positive_set: if True, only compute the density for the positive set. If False, only for the negative.
+
 
         Returns:
 
         """
         kernel = self.get_kernel_function()
         latent_reps = latent_reps.to(self.device)
-        if positive_set is not None:
-            concept_reps = torch.from_numpy(self.get_concept_reps(positive_set)).to(self.device)
-        else:
-            concept_reps = torch.from_numpy(self.concept_reps).to(self.device)
-        return kernel(concept_reps, latent_reps).mean(dim=0)
+        concept_reps = torch.from_numpy(self.get_concept_reps(positive_set)).to(self.device)
+        density = kernel(concept_reps, latent_reps).mean(dim=0)
+        return density
+
 
 
 

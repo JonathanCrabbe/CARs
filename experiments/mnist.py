@@ -10,7 +10,7 @@ from torchvision.datasets import MNIST
 from torchvision import transforms
 from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
 from utils.dataset import generate_mnist_concept_dataset
-from utils.plot import plot_concept_accuracy, plot_global_explanation
+from utils.plot import plot_concept_accuracy, plot_global_explanation, plot_saliency_map
 from explanations.concept import CAR, CAV
 from explanations.feature import FeatureImportance
 from sklearn.metrics import accuracy_score
@@ -232,10 +232,21 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
         car.fit(H_train, y_train)
         logging.info(f"Now computing feature importance on the test set for {concept_name}")
-        feature_explainer = FeatureImportance("Gradient Shap", car, model, device)
-        baselines = torch.from_numpy(X_train[y_train == 0]).to(device)
-        feature_importance = feature_explainer.attribute(test_loader, baselines=baselines)
-        logging.info(feature_importance.shape)
+        """
+        for X_test, y_test in test_loader:
+            H_test = model.input_to_representation(X_test.to(device))
+            concept_importance = car.concept_importance(H_test)
+            pred_concepts = (concept_importance > 0).detach().cpu().numpy().astype(int)
+            targets = [int(label in concept_to_class[concept_name]) for label in y_test]
+            print(accuracy_score(pred_concepts, targets))
+        """
+        plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)][40:50]
+        feature_explainer = FeatureImportance("Integrated Gradient", car, model, device)
+        #baselines = torch.from_numpy(X_train[y_train == 0]).to(device)
+        baselines = torch.zeros((1, 1, 28, 28)).to(device)
+        feature_importance = feature_explainer.attribute(test_loader, baselines=baselines, internal_batch_size=batch_size)
+        X_test = test_set.data
+        plot_saliency_map(X_test, feature_importance, plot_idx)
 
 
 

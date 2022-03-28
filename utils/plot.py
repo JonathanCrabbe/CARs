@@ -4,6 +4,7 @@ import seaborn as sns
 import pandas as pd
 import logging
 import argparse
+import torch
 import textwrap
 import numpy as np
 from pathlib import Path
@@ -53,6 +54,29 @@ def plot_global_explanation(results_dir: Path, dataset_name: str) -> None:
     true_scores = plot_df.loc[plot_df.Method == "True Prop."]["Score"]
     logging.info(f"TCAR-True Prop. Correlation: {np.corrcoef(tcar_scores, true_scores)[0, 1]:.2g}")
     logging.info(f"TCAV-True Prop. Correlation: {np.corrcoef(tcav_scores, true_scores)[0, 1]:.2g}")
+
+
+def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: list[int]) -> None:
+    sns.set(font_scale=1.2)
+    sns.color_palette("colorblind")
+    cblind_palette = sns.color_palette("colorblind")
+    sns.set_style("white")
+    W = saliency.shape[-1]
+    n_plots = len(plot_indices)
+    fig, axs = plt.subplots(ncols=1, nrows=n_plots, figsize=(3, 3*n_plots))
+    for ax_id, example_id in enumerate(plot_indices):
+        sub_saliency = saliency[example_id]
+        sns.histplot(sub_saliency.flatten())
+        max_value = np.max(np.abs(sub_saliency))
+        ax = axs[ax_id]
+        ax.imshow(images[example_id].cpu().numpy(), cmap='gray', zorder=1)
+        ax.axis('off')
+        sns.heatmap(np.reshape(sub_saliency, (W, W)), linewidth=0, xticklabels=False, yticklabels=False,
+                    ax=ax, cmap=sns.diverging_palette(10, 133, as_cmap=True), cbar=False,
+                    alpha=.8, zorder=2, vmin=-max_value, vmax=max_value)
+    plt.show()
+    plt.close()
+    return fig
 
 
 def wrap_labels(ax, width, break_long_words=False):

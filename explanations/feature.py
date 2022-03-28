@@ -9,9 +9,11 @@ from torch.utils.data import DataLoader
 class FeatureImportance:
     def __init__(self, attribution_name: str, concept_explainer: ConceptExplainer,
                  black_box: torch.nn.Module, device: torch.device):
-        assert attribution_name in {"Gradient Shap"}
+        assert attribution_name in {"Gradient Shap", "Integrated Gradient"}
         if attribution_name == "Gradient Shap":
             self.attribution_method = attr.GradientShap(self.concept_importance)
+        elif attribution_name == "Integrated Gradient":
+            self.attribution_method = attr.IntegratedGradients(self.concept_importance)
         self.concept_explainer = concept_explainer
         self.black_box = black_box.to(device)
         self.device = device
@@ -24,7 +26,6 @@ class FeatureImportance:
             attr = np.append(attr,
                              self.attribution_method.attribute(input_features, **kwargs).detach().cpu().numpy(),
                              axis=0)
-        print(attr.shape)
         return attr
 
 
