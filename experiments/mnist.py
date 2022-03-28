@@ -246,7 +246,8 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         baselines = torch.zeros((1, 1, 28, 28)).to(device)
         feature_importance = feature_explainer.attribute(test_loader, baselines=baselines, internal_batch_size=batch_size)
         X_test = test_set.data
-        plot_saliency_map(X_test, feature_importance, plot_idx)
+        if plot:
+            plot_saliency_map(X_test, feature_importance, plot_idx, save_dir, "mnist", concept_name)
 
 
 

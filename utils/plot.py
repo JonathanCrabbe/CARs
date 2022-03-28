@@ -56,7 +56,8 @@ def plot_global_explanation(results_dir: Path, dataset_name: str) -> None:
     logging.info(f"TCAV-True Prop. Correlation: {np.corrcoef(tcav_scores, true_scores)[0, 1]:.2g}")
 
 
-def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: list[int]) -> None:
+def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: list[int],
+                      results_dir: Path, dataset_name: str, concept_name: str) -> None:
     sns.set(font_scale=1.2)
     sns.color_palette("colorblind")
     cblind_palette = sns.color_palette("colorblind")
@@ -74,9 +75,8 @@ def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: 
         sns.heatmap(np.reshape(sub_saliency, (W, W)), linewidth=0, xticklabels=False, yticklabels=False,
                     ax=ax, cmap=sns.diverging_palette(10, 133, as_cmap=True), cbar=False,
                     alpha=.8, zorder=2, vmin=-max_value, vmax=max_value)
-    plt.show()
+    plt.savefig(results_dir/f"{dataset_name}_{concept_name}_saliency.pdf")
     plt.close()
-    return fig
 
 
 def wrap_labels(ax, width, break_long_words=False):

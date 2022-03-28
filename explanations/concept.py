@@ -141,11 +141,10 @@ class CAR(ConceptExplainer, ABC):
         Get the kernel funtion underlying the CAR
         Returns: kernel function as a callable with arguments (h1, h2)
         """
-        # The implementation should unstack one tensor to return a kernel matrix of shape len(h1) x len(h2)!
         if self.kernel == 'rbf':
-            #latent_reps_std = torch.from_numpy(np.std(self.concept_reps, axis=0)).to(self.device).unsqueeze(0).unsqueeze(0)
             latent_reps_std = 1
             latent_dim = self.concept_reps.shape[-1]
+            # We unstack the tensors to return a kernel matrix of shape len(h1) x len(h2)!
             return lambda h1, h2: torch.exp(-torch.sum(((h1.unsqueeze(1) - h2.unsqueeze(0)) /
                                                         (latent_dim*latent_reps_std))**2, dim=-1))
 
