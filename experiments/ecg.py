@@ -203,7 +203,7 @@ if __name__ == "__main__":
     parser.add_argument("--plot", action='store_true')
     args = parser.parse_args()
     if args.train:
-        train_ecg_model(args.latent_dim,  args.batch_size, model_name="model_test")
+        train_ecg_model(args.latent_dim,  args.batch_size, model_name="model")
     if args.name == "concept_accuracy":
         concept_accuracy(args.seeds,  args.latent_dim,  args.plot)
     elif args.name == "global_explanations":

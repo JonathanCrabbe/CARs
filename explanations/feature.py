@@ -1,7 +1,8 @@
 import numpy as np
+import torch
+from tqdm import tqdm
 from captum import attr
 from explanations.concept import ConceptExplainer
-import torch
 from torch.utils.data import DataLoader
 
 
@@ -16,11 +17,15 @@ class FeatureImportance:
         self.device = device
 
     def attribute(self, data_loader: DataLoader, **kwargs) -> np.ndarray:
-        attr = []
-        for input_features, _ in data_loader:
+        input_shape = list(data_loader.dataset[0][0].shape)
+        attr = np.empty(shape=[0]+input_shape)
+        for input_features, _ in tqdm(data_loader, unit="batch", leave=False):
             input_features = input_features.to(self.device)
-            attr += self.attribution_method.attribute(input_features, **kwargs).tolist()
-        return np.ndarray(attr)
+            attr = np.append(attr,
+                             self.attribution_method.attribute(input_features, **kwargs).detach().cpu().numpy(),
+                             axis=0)
+        print(attr.shape)
+        return attr
 
 
     def concept_importance(self, input_features: torch.tensor) -> torch.Tensor:

@@ -12,6 +12,7 @@ from utils.hooks import register_hooks, get_saved_representations, remove_all_ho
 from utils.dataset import generate_mnist_concept_dataset
 from utils.plot import plot_concept_accuracy, plot_global_explanation
 from explanations.concept import CAR, CAV
+from explanations.feature import FeatureImportance
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
 
@@ -199,6 +200,46 @@ def global_explanations(random_seed: int, batch_size: int, latent_dim: int,  plo
         plot_global_explanation(save_dir, "mnist")
 
 
+def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot: bool,
+                       save_dir: Path = Path.cwd()/"results/mnist/feature_importance",
+                       data_dir: Path = Path.cwd()/"data/mnist",
+                       model_dir: Path = Path.cwd() / f"results/mnist",
+                       model_name: str = "model") -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    torch.manual_seed(random_seed)
+
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+
+    model_dir = model_dir/model_name
+    model = ClassifierMnist(latent_dim, model_name)
+    model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
+    model.to(device)
+    model.eval()
+
+    # Fit a concept classifier and test accuracy for each concept
+    results_data = []
+    car_classifiers = [CAR(device) for _ in concept_to_class]
+
+    test_set = MNIST(data_dir, train=False, download=True)
+    test_set.transform = transforms.Compose([transforms.ToTensor()])
+    test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
+
+    for concept_name, car in zip(concept_to_class, car_classifiers):
+        logging.info(f"Now fitting CAR classifier for {concept_name}")
+        X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir,
+                                                          True, 200, random_seed)
+        H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
+        car.fit(H_train, y_train)
+        logging.info(f"Now computing feature importance on the test set for {concept_name}")
+        feature_explainer = FeatureImportance("Gradient Shap", car, model, device)
+        baselines = torch.from_numpy(X_train[y_train == 0]).to(device)
+        feature_importance = feature_explainer.attribute(test_loader, baselines=baselines)
+        logging.info(feature_importance.shape)
+
+
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -211,13 +252,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.train:
-        train_mnist_model(args.latent_dim,  args.batch_size, model_name="model_test")
+        train_mnist_model(args.latent_dim,  args.batch_size, model_name="model")
     if args.name == "concept_accuracy":
         concept_accuracy(args.seeds, args.latent_dim, args.plot)
     elif args.name == "global_explanations":
         global_explanations(args.seeds[0], args.batch_size, args.latent_dim,  args.plot)
     elif args.name == "statistical_significance":
         statistical_significance(args.seeds[0], args.latent_dim)
+    elif args.name == "feature_importance":
+        feature_importance(args.seeds[0], args.batch_size, args.latent_dim, args.plot)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 

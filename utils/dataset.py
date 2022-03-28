@@ -1,8 +1,7 @@
 import pandas as pd
-import torch
-import kaggle
 import os
 import logging
+import torch
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -54,6 +53,7 @@ class ECGDataset(Dataset, ABC):
         return self.X[idx], self.y[idx]
 
     def download(self) -> None:
+        import kaggle
         logging.info(f"Downloading ECG dataset in {self.data_dir}")
         kaggle.api.authenticate()
         kaggle.api.dataset_download_files('shayanfazeli/heartbeat', path=self.data_dir, unzip=True)
