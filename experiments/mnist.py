@@ -236,7 +236,6 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         logging.info(f"Now computing feature importance on the test set for {concept_name}")
         concept_attribution_method = ConceptFeatureImportance("Integrated Gradient", car, model, device)
         vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
-        #baselines = torch.from_numpy(X_train[y_train == 0]).to(device)
         baselines = torch.zeros((1, 1, 28, 28)).to(device)
         logging.info("Concept-based feature importance")
         concept_feature_importance = concept_attribution_method.attribute(test_loader, baselines=baselines)

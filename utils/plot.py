@@ -80,10 +80,9 @@ def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: 
     sns.set_style("white")
     W = saliency.shape[-1]
     n_plots = len(plot_indices)
-    fig, axs = plt.subplots(ncols=1, nrows=n_plots, figsize=(3, 2.7*n_plots))
+    fig, axs = plt.subplots(ncols=1, nrows=n_plots, figsize=(3, 2.8*n_plots))
     for ax_id, example_id in enumerate(plot_indices):
         sub_saliency = saliency[example_id]
-        sns.histplot(sub_saliency.flatten())
         max_value = np.max(np.abs(sub_saliency))
         ax = axs[ax_id]
         ax.imshow(images[example_id].cpu().numpy(), cmap='gray', zorder=1)
@@ -91,6 +90,26 @@ def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: 
         sns.heatmap(np.reshape(sub_saliency, (W, W)), linewidth=0, xticklabels=False, yticklabels=False,
                     ax=ax, cmap=sns.diverging_palette(10, 133, as_cmap=True), cbar=False,
                     alpha=.8, zorder=2, vmin=-max_value, vmax=max_value)
+    plt.savefig(results_dir/f"{dataset_name}_{concept_name}_saliency.pdf")
+    plt.close()
+
+
+def plot_time_series_saliency(tseries: torch.Tensor, saliency: np.ndarray, plot_indices: list[int],
+                              results_dir: Path, dataset_name: str, concept_name: str) -> None:
+    sns.set(font_scale=1.2)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
+    T = tseries.shape[1]
+    n_plots = len(plot_indices)
+    fig, axs = plt.subplots(ncols=1, nrows=n_plots, figsize=(3, 2.7*n_plots))
+    for ax_id, example_id in enumerate(plot_indices):
+        sub_saliency = saliency[example_id]
+        positive = sub_saliency > 0
+        max_value = np.max(np.abs(sub_saliency))
+        ax = axs[ax_id]
+        sns.lineplot(x=list(range(T)), y=tseries[example_id].flatten(), ax=ax)
+        sns.scatterplot(x=list(range(T)), y=tseries[example_id].flatten(),
+                        hue=positive, size=np.abs(sub_saliency.flatten()), ax=ax)
     plt.savefig(results_dir/f"{dataset_name}_{concept_name}_saliency.pdf")
     plt.close()
 
