@@ -234,28 +234,23 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
         car.fit(H_train, y_train)
         logging.info(f"Now computing feature importance on the test set for {concept_name}")
-        """
-        for X_test, y_test in test_loader:
-            H_test = model.input_to_representation(X_test.to(device))
-            concept_importance = car.concept_importance(H_test)
-            pred_concepts = (concept_importance > 0).detach().cpu().numpy().astype(int)
-            targets = [int(label in concept_to_class[concept_name]) for label in y_test]
-            print(accuracy_score(pred_concepts, targets))
-        """
         concept_attribution_method = ConceptFeatureImportance("Integrated Gradient", car, model, device)
         vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
         #baselines = torch.from_numpy(X_train[y_train == 0]).to(device)
         baselines = torch.zeros((1, 1, 28, 28)).to(device)
+        logging.info("Concept-based feature importance")
         concept_feature_importance = concept_attribution_method.attribute(test_loader, baselines=baselines)
-        vanilla_feature_importance = concept_attribution_method.attribute(test_loader, baselines=baselines)
+        logging.info("Vanilla feature importance")
+        vanilla_feature_importance = vanilla_attribution_method.attribute(test_loader, baselines=baselines)
         concept_pert_sens = perturbation_metric(test_loader, concept_feature_importance, device, model, car, baselines, n_perts)
-        results_data += [["CAR", concept_name, n_pert, np.mean(concept_pert_sens[pert_id])]
-                         for pert_id, n_pert in enumerate(n_perts)]
+        results_data += [["CAR", concept_name, n_pert, pert_sens]
+                         for pert_id, n_pert in enumerate(n_perts) for pert_sens in concept_pert_sens[pert_id]]
         vanilla_pert_sens = perturbation_metric(test_loader, vanilla_feature_importance, device, model, car, baselines,
                                                 n_perts)
-        results_data += [["Vanilla", concept_name, n_pert, np.mean(vanilla_pert_sens[pert_id])]
-                         for pert_id, n_pert in enumerate(n_perts)]
+        results_data += [["Vanilla", concept_name, n_pert, pert_sens]
+                         for pert_id, n_pert in enumerate(n_perts) for pert_sens in vanilla_pert_sens[pert_id]]
         if plot:
+            logging.info(f"Saving plots in {save_dir} for {concept_name}")
             X_test = test_set.data
             plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)]
             for set_id in range(1, 5):
@@ -280,7 +275,7 @@ if __name__ == "__main__":
     parser.add_argument('--seeds', nargs="+", type=int, default=list(range(1, 10)))
     parser.add_argument("--batch_size", type=int, default=120)
     parser.add_argument("--latent_dim", type=int, default=5)
-    parser.add_argument("--n_perts", type=int, nargs="+", default=[1, 2, 5, 10, 20, 50])
+    parser.add_argument("--n_perts", type=int, nargs="+", default=[1, 2, 5, 10, 20, 30])
     parser.add_argument("--train", action='store_true')
     parser.add_argument("--plot", action='store_true')
     args = parser.parse_args()

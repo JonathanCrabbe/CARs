@@ -77,11 +77,10 @@ def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: 
                       results_dir: Path, dataset_name: str, concept_name: str) -> None:
     sns.set(font_scale=1.2)
     sns.color_palette("colorblind")
-    cblind_palette = sns.color_palette("colorblind")
     sns.set_style("white")
     W = saliency.shape[-1]
     n_plots = len(plot_indices)
-    fig, axs = plt.subplots(ncols=1, nrows=n_plots, figsize=(3, 3*n_plots))
+    fig, axs = plt.subplots(ncols=1, nrows=n_plots, figsize=(3, 2.7*n_plots))
     for ax_id, example_id in enumerate(plot_indices):
         sub_saliency = saliency[example_id]
         sns.histplot(sub_saliency.flatten())

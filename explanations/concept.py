@@ -157,7 +157,7 @@ class CAR(ConceptExplainer, ABC):
 
 
         Returns:
-
+            The density of the latent representations under the relevant concept set
         """
         kernel = self.get_kernel_function()
         latent_reps = latent_reps.to(self.device)

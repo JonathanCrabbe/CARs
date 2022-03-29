@@ -49,6 +49,7 @@ class VanillaFeatureImportance:
         input_shape = list(data_loader.dataset[0][0].shape)
         attr = np.empty(shape=[0]+input_shape)
         for input_features, targets in tqdm(data_loader, unit="batch", leave=False):
+            targets = targets.to(self.device)
             input_features = input_features.to(self.device)
             attr = np.append(attr,
                              self.attribution_method.attribute(input_features, target=targets, **kwargs)

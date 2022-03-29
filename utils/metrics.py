@@ -28,9 +28,9 @@ def perturbation_metric(data_loader: DataLoader, attribution: np.ndarray, device
             flat_batch_shape = batch_features.view(len(batch_features), -1).shape
             batch_attribution = attribution[batch_id*batch_size:batch_id*batch_size+len(batch_features)]
             mask = torch.ones(flat_batch_shape, device=device)
-            top_pixels = torch.topk(torch.abs(torch.from_numpy(batch_attribution)).view(flat_batch_shape), n_pert)[1]
+            top_features = torch.topk(torch.abs(torch.from_numpy(batch_attribution)).view(flat_batch_shape), n_pert)[1]
             for k in range(n_pert):
-                mask[:, top_pixels[:, k]] = 0  # Mask the n_pert most important entries
+                mask[:, top_features[:, k]] = 0  # Mask the n_pert most important entries
             batch_features_pert = mask*batch_features.view(flat_batch_shape) +\
                                 (1-mask)*baselines.view(1, -1)
             batch_features_pert = batch_features_pert.view(batch_shape)
