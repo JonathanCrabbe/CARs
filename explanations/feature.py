@@ -6,7 +6,7 @@ from explanations.concept import ConceptExplainer
 from torch.utils.data import DataLoader
 
 
-class FeatureImportance:
+class ConceptFeatureImportance:
     def __init__(self, attribution_name: str, concept_explainer: ConceptExplainer,
                  black_box: torch.nn.Module, device: torch.device):
         assert attribution_name in {"Gradient Shap", "Integrated Gradient"}
@@ -33,3 +33,26 @@ class FeatureImportance:
         input_features = input_features.to(self.device)
         latent_reps = self.black_box.input_to_representation(input_features)
         return self.concept_explainer.concept_importance(latent_reps)
+
+
+class VanillaFeatureImportance:
+    def __init__(self, attribution_name: str, black_box: torch.nn.Module, device: torch.device):
+        assert attribution_name in {"Gradient Shap", "Integrated Gradient"}
+        if attribution_name == "Gradient Shap":
+            self.attribution_method = attr.GradientShap(black_box)
+        elif attribution_name == "Integrated Gradient":
+            self.attribution_method = attr.IntegratedGradients(black_box)
+        self.black_box = black_box.to(device)
+        self.device = device
+
+    def attribute(self, data_loader: DataLoader, **kwargs) -> np.ndarray:
+        input_shape = list(data_loader.dataset[0][0].shape)
+        attr = np.empty(shape=[0]+input_shape)
+        for input_features, targets in tqdm(data_loader, unit="batch", leave=False):
+            input_features = input_features.to(self.device)
+            attr = np.append(attr,
+                             self.attribution_method.attribute(input_features, target=targets, **kwargs)
+                             .detach().cpu().numpy(), axis=0)
+        return attr
+
+

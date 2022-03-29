@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 def plot_concept_accuracy(results_dir: Path, concept: str, dataset_name: str) -> None:
-    sns.set(font_scale=1.5)
+    sns.set(font_scale=1.2)
     sns.color_palette("colorblind")
     sns.set_style("white")
     metrics_df = pd.read_csv(results_dir/"metrics.csv")
@@ -54,6 +54,23 @@ def plot_global_explanation(results_dir: Path, dataset_name: str) -> None:
     true_scores = plot_df.loc[plot_df.Method == "True Prop."]["Score"]
     logging.info(f"TCAR-True Prop. Correlation: {np.corrcoef(tcar_scores, true_scores)[0, 1]:.2g}")
     logging.info(f"TCAV-True Prop. Correlation: {np.corrcoef(tcav_scores, true_scores)[0, 1]:.2g}")
+
+
+def plot_perturbation_sensitivity(results_dir: Path, concept: str, dataset_name: str) -> None:
+    sns.set(font_scale=1)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
+    metrics_df = pd.read_csv(results_dir/"metrics.csv")
+    if concept:
+        metrics_df = metrics_df[metrics_df.Concept == concept]
+    sns.lineplot(data=metrics_df, x="Perturbed Features", y="Concept Shift", hue="Method")
+    if concept:
+        plt.ylabel(f"Concept {concept} Perturbation Sensitivity")
+        plt.savefig(results_dir/f"{dataset_name}_{concept}_pert_sensitivity.pdf")
+    else:
+        plt.ylabel(f"Overall Perturbation Sensitivity")
+        plt.savefig(results_dir / f"{dataset_name}_pert_sensitivity.pdf")
+    plt.close()
 
 
 def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: list[int],
@@ -101,6 +118,8 @@ if __name__ == "__main__":
         plot_concept_accuracy(save_path, args.concept, args.dataset)
     elif args.name == "global_explanations":
         plot_global_explanation(save_path, args.dataset)
+    elif args.name == "feature_importance":
+        plot_perturbation_sensitivity(save_path, args.concept, args.dataset)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 
