@@ -2,6 +2,7 @@ import itertools
 import logging
 import argparse
 import torch
+import numpy as np
 import os
 import pandas as pd
 from pathlib import Path
@@ -10,8 +11,8 @@ from torchvision.datasets import MNIST
 from torchvision import transforms
 from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
 from utils.dataset import generate_mnist_concept_dataset
-from utils.metrics import perturbation_metric, correlation_matrix
-from utils.plot import plot_concept_accuracy, plot_global_explanation, plot_saliency_map, plot_perturbation_sensitivity
+from utils.plot import (plot_concept_accuracy, plot_global_explanation, plot_saliency_map,
+                        plot_attribution_correlation)
 from explanations.concept import CAR, CAV
 from explanations.feature import ConceptFeatureImportance, VanillaFeatureImportance
 from sklearn.metrics import accuracy_score
@@ -219,7 +220,6 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
     model.eval()
 
     # Fit a concept classifier and test accuracy for each concept
-    results_data = []
     car_classifiers = [CAR(device) for _ in concept_to_class]
 
     test_set = MNIST(data_dir, train=False, download=True)
@@ -227,6 +227,7 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
     attribution_dic = {}
+    baselines = torch.zeros((1, 1, 28, 28)).to(device)
     for concept_name, car in zip(concept_to_class, car_classifiers):
         logging.info(f"Now fitting CAR classifier for {concept_name}")
         X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir,
@@ -234,18 +235,8 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
         car.fit(H_train, y_train)
         logging.info(f"Now computing feature importance on the test set for {concept_name}")
-        baselines = torch.zeros((1, 1, 28, 28)).to(device)
         concept_attribution_method = ConceptFeatureImportance("Integrated Gradient", car, model, device)
         attribution_dic[concept_name] = concept_attribution_method.attribute(test_loader, baselines=baselines)
-        """
-            concept_pert_sens = perturbation_metric(test_loader, concept_feature_importance, device, model, car, baselines, n_perts)
-            results_data += [["CAR", concept_name, n_pert, pert_sens]
-                             for pert_id, n_pert in enumerate(n_perts) for pert_sens in concept_pert_sens[pert_id]]
-            vanilla_pert_sens = perturbation_metric(test_loader, vanilla_feature_importance, device, model, car, baselines,
-                                                    n_perts)
-            results_data += [["Vanilla", concept_name, n_pert, pert_sens]
-                             for pert_id, n_pert in enumerate(n_perts) for pert_sens in vanilla_pert_sens[pert_id]]
-        """
         if plot:
             logging.info(f"Saving plots in {save_dir} for {concept_name}")
             X_test = test_set.data
@@ -256,17 +247,15 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
     logging.info(f"Now computing vanilla feature importance")
     vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
     attribution_dic["Vanilla"] = vanilla_attribution_method.attribute(test_loader, baselines=baselines)
-    print(correlation_matrix(attribution_dic))
-
-
-    csv_path = save_dir / "metrics.csv"
-    results_df = pd.DataFrame(results_data, columns=["Method", "Concept", "Perturbed Features", "Concept Shift"])
-    results_df.to_csv(csv_path, index=False)
-
+    np.savez(save_dir/'attributions.npz', **attribution_dic)
     if plot:
-        plot_perturbation_sensitivity(save_dir, concept=None, dataset_name="mnist")
-        for concept_name in concept_to_class:
-            plot_perturbation_sensitivity(save_dir, concept=concept_name, dataset_name="mnist")
+        logging.info(f"Saving plots in {save_dir}")
+        plot_attribution_correlation(save_dir, "mnist")
+        X_test = test_set.data
+        plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)]
+        for set_id in range(1, 5):
+            plot_saliency_map(X_test, attribution_dic["Vanilla"], plot_idx[set_id * 10:(set_id + 1) * 10],
+                              save_dir, f"mnist_set{set_id}", "Vanilla")
 
 
 if __name__ == "__main__":

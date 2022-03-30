@@ -8,6 +8,7 @@ import torch
 import textwrap
 import numpy as np
 from pathlib import Path
+from utils.metrics import correlation_matrix
 
 
 def plot_concept_accuracy(results_dir: Path, concept: str, dataset_name: str) -> None:
@@ -73,6 +74,22 @@ def plot_perturbation_sensitivity(results_dir: Path, concept: str, dataset_name:
     plt.close()
 
 
+def plot_attribution_correlation(results_dir: Path, dataset_name: str) \
+        -> None:
+    sns.set(font_scale=.8)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
+    attribution_dic = np.load(results_dir/"attributions.npz")
+    corr_matrix = correlation_matrix(attribution_dic)
+    ax = sns.heatmap(corr_matrix, vmin=-1, vmax=1, cmap=sns.diverging_palette(10, 133, as_cmap=True), cbar=True,
+                     xticklabels=attribution_dic.keys(), yticklabels=attribution_dic.keys(),
+                     cbar_kws={'label': 'Correlation'})
+    wrap_labels(ax, 10, False, True)
+    plt.tight_layout()
+    plt.savefig(results_dir/f"{dataset_name}_attr_corr.pdf")
+    plt.close()
+
+
 def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: list[int],
                       results_dir: Path, dataset_name: str, concept_name: str) -> None:
     sns.set(font_scale=1.2)
@@ -114,13 +131,31 @@ def plot_time_series_saliency(tseries: torch.Tensor, saliency: np.ndarray, plot_
     plt.close()
 
 
-def wrap_labels(ax, width, break_long_words=False):
+def wrap_labels(ax, width, break_long_words=False, do_y: bool = False) -> None:
+    """
+    Break labels in several lines in a figure
+    Args:
+        ax: figure axes
+        width: maximal number of characters per line
+        break_long_words: if True, allow breaks in the middle of a word
+        do_y: if True, apply the function to the y axis as well
+
+    Returns:
+
+    """
     labels = []
     for label in ax.get_xticklabels():
         text = label.get_text()
         labels.append(textwrap.fill(text, width=width,
                       break_long_words=break_long_words))
     ax.set_xticklabels(labels, rotation=0)
+    if do_y:
+        labels = []
+        for label in ax.get_yticklabels():
+            text = label.get_text()
+            labels.append(textwrap.fill(text, width=width,
+                                        break_long_words=break_long_words))
+        ax.set_yticklabels(labels, rotation=0)
 
 
 if __name__ == "__main__":
@@ -137,7 +172,7 @@ if __name__ == "__main__":
     elif args.name == "global_explanations":
         plot_global_explanation(save_path, args.dataset)
     elif args.name == "feature_importance":
-        plot_perturbation_sensitivity(save_path, args.concept, args.dataset)
+        plot_attribution_correlation(save_path, args.dataset)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 

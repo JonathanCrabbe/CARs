@@ -45,7 +45,7 @@ def perturbation_metric(data_loader: DataLoader, attribution: np.ndarray, device
     return pert_sensitivity
 
 
-def correlation_matrix(attribution_dic: dict[np.ndarray]) -> np.ndarray:
+def correlation_matrix(attribution_dic: dict[str, np.ndarray]) -> np.ndarray:
     """
     Computes the correlation matrix between the feature importance methods stored in a dictionary
     Args:
@@ -56,7 +56,6 @@ def correlation_matrix(attribution_dic: dict[np.ndarray]) -> np.ndarray:
     """
     corr_mat = np.empty((len(attribution_dic), len(attribution_dic)))
     for entry_id, (name1, name2) in enumerate(itertools.product(attribution_dic, attribution_dic)):
-        print(entry_id)
         corr_mat[entry_id//len(attribution_dic), entry_id%len(attribution_dic)] =\
             np.corrcoef(attribution_dic[name1].flatten(), attribution_dic[name2].flatten())[0, 1]
     return corr_mat
