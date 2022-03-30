@@ -202,13 +202,14 @@ if __name__ == "__main__":
     parser.add_argument("--train", action='store_true')
     parser.add_argument("--plot", action='store_true')
     args = parser.parse_args()
+    model_name = f"model_{args.latent_dim}"
     if args.train:
-        train_ecg_model(args.latent_dim,  args.batch_size, model_name="model")
+        train_ecg_model(args.latent_dim,  args.batch_size, model_name=model_name)
     if args.name == "concept_accuracy":
-        concept_accuracy(args.seeds,  args.latent_dim,  args.plot)
+        concept_accuracy(args.seeds,  args.latent_dim,  args.plot, model_name=model_name)
     elif args.name == "global_explanations":
-        global_explanations(args.seeds[0], args.batch_size, args.latent_dim,  args.plot)
+        global_explanations(args.seeds[0], args.batch_size, args.latent_dim,  args.plot, model_name=model_name)
     elif args.name == "statistical_significance":
-        statistical_significance(args.seeds[0], args.latent_dim)
+        statistical_significance(args.seeds[0], args.latent_dim, model_name=model_name)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")

@@ -4,14 +4,13 @@ import argparse
 import torch
 import os
 import pandas as pd
-import numpy as np
 from pathlib import Path
 from models.mnist import ClassifierMnist
 from torchvision.datasets import MNIST
 from torchvision import transforms
 from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
 from utils.dataset import generate_mnist_concept_dataset
-from utils.metrics import perturbation_metric
+from utils.metrics import perturbation_metric, correlation_matrix
 from utils.plot import plot_concept_accuracy, plot_global_explanation, plot_saliency_map, plot_perturbation_sensitivity
 from explanations.concept import CAR, CAV
 from explanations.feature import ConceptFeatureImportance, VanillaFeatureImportance
@@ -227,6 +226,7 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
     test_set.transform = transforms.Compose([transforms.ToTensor()])
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
+    attribution_dic = {}
     for concept_name, car in zip(concept_to_class, car_classifiers):
         logging.info(f"Now fitting CAR classifier for {concept_name}")
         X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir,
@@ -234,27 +234,30 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
         car.fit(H_train, y_train)
         logging.info(f"Now computing feature importance on the test set for {concept_name}")
-        concept_attribution_method = ConceptFeatureImportance("Integrated Gradient", car, model, device)
-        vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
         baselines = torch.zeros((1, 1, 28, 28)).to(device)
-        logging.info("Concept-based feature importance")
-        concept_feature_importance = concept_attribution_method.attribute(test_loader, baselines=baselines)
-        logging.info("Vanilla feature importance")
-        vanilla_feature_importance = vanilla_attribution_method.attribute(test_loader, baselines=baselines)
-        concept_pert_sens = perturbation_metric(test_loader, concept_feature_importance, device, model, car, baselines, n_perts)
-        results_data += [["CAR", concept_name, n_pert, pert_sens]
-                         for pert_id, n_pert in enumerate(n_perts) for pert_sens in concept_pert_sens[pert_id]]
-        vanilla_pert_sens = perturbation_metric(test_loader, vanilla_feature_importance, device, model, car, baselines,
-                                                n_perts)
-        results_data += [["Vanilla", concept_name, n_pert, pert_sens]
-                         for pert_id, n_pert in enumerate(n_perts) for pert_sens in vanilla_pert_sens[pert_id]]
+        concept_attribution_method = ConceptFeatureImportance("Integrated Gradient", car, model, device)
+        attribution_dic[concept_name] = concept_attribution_method.attribute(test_loader, baselines=baselines)
+        """
+            concept_pert_sens = perturbation_metric(test_loader, concept_feature_importance, device, model, car, baselines, n_perts)
+            results_data += [["CAR", concept_name, n_pert, pert_sens]
+                             for pert_id, n_pert in enumerate(n_perts) for pert_sens in concept_pert_sens[pert_id]]
+            vanilla_pert_sens = perturbation_metric(test_loader, vanilla_feature_importance, device, model, car, baselines,
+                                                    n_perts)
+            results_data += [["Vanilla", concept_name, n_pert, pert_sens]
+                             for pert_id, n_pert in enumerate(n_perts) for pert_sens in vanilla_pert_sens[pert_id]]
+        """
         if plot:
             logging.info(f"Saving plots in {save_dir} for {concept_name}")
             X_test = test_set.data
             plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)]
             for set_id in range(1, 5):
-                plot_saliency_map(X_test, concept_feature_importance, plot_idx[set_id*10:(set_id+1)*10],
+                plot_saliency_map(X_test, attribution_dic[concept_name], plot_idx[set_id*10:(set_id+1)*10],
                                   save_dir, f"mnist_set{set_id}", concept_name)
+    logging.info(f"Now computing vanilla feature importance")
+    vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
+    attribution_dic["Vanilla"] = vanilla_attribution_method.attribute(test_loader, baselines=baselines)
+    print(correlation_matrix(attribution_dic))
+
 
     csv_path = save_dir / "metrics.csv"
     results_df = pd.DataFrame(results_data, columns=["Method", "Concept", "Perturbed Features", "Concept Shift"])
@@ -264,7 +267,6 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         plot_perturbation_sensitivity(save_dir, concept=None, dataset_name="mnist")
         for concept_name in concept_to_class:
             plot_perturbation_sensitivity(save_dir, concept=concept_name, dataset_name="mnist")
-
 
 
 if __name__ == "__main__":
@@ -279,16 +281,18 @@ if __name__ == "__main__":
     parser.add_argument("--plot", action='store_true')
     args = parser.parse_args()
 
+    model_name = f"model_{args.latent_dim}"
     if args.train:
-        train_mnist_model(args.latent_dim,  args.batch_size, model_name="model")
+        train_mnist_model(args.latent_dim,  args.batch_size, model_name=model_name)
     if args.name == "concept_accuracy":
-        concept_accuracy(args.seeds, args.latent_dim, args.plot)
+        concept_accuracy(args.seeds, args.latent_dim, args.plot, model_name=model_name)
     elif args.name == "global_explanations":
-        global_explanations(args.seeds[0], args.batch_size, args.latent_dim,  args.plot)
+        global_explanations(args.seeds[0], args.batch_size, args.latent_dim,  args.plot, model_name=model_name)
     elif args.name == "statistical_significance":
-        statistical_significance(args.seeds[0], args.latent_dim)
+        statistical_significance(args.seeds[0], args.latent_dim, model_name=model_name)
     elif args.name == "feature_importance":
-        feature_importance(args.seeds[0], args.batch_size, args.latent_dim, args.plot, args.n_perts)
+        feature_importance(args.seeds[0], args.batch_size, args.latent_dim, args.plot, args.n_perts,
+                           model_name=model_name)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 
