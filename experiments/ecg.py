@@ -4,14 +4,17 @@ import logging
 import argparse
 import itertools
 import pandas as pd
+import numpy as np
 from pathlib import Path
 from torch.utils.data import DataLoader
 from utils.dataset import ECGDataset, generate_ecg_concept_dataset
 from models.ecg import ClassifierECG
 from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
 from explanations.concept import CAR, CAV
+from explanations.feature import ConceptFeatureImportance, VanillaFeatureImportance
 from sklearn.metrics import accuracy_score
-from utils.plot import plot_concept_accuracy, plot_global_explanation
+from utils.plot import (plot_concept_accuracy, plot_global_explanation, plot_attribution_correlation,
+                        plot_time_series_saliency)
 from tqdm import tqdm
 
 concept_to_class = {"Supraventricular": 1, "Premature Ventricular": 2, "Fusion Beats": 3, "Unknown": 4}
@@ -192,6 +195,61 @@ def global_explanations(random_seed: int, batch_size: int, latent_dim: int,  plo
         plot_global_explanation(save_dir, "ecg")
 
 
+def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot: bool,
+                       save_dir: Path = Path.cwd()/"results/ecg/feature_importance",
+                       data_dir: Path = Path.cwd()/"data/ecg",
+                       model_dir: Path = Path.cwd() / f"results/ecg",
+                       model_name: str = "model") -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    torch.manual_seed(random_seed)
+
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+
+    model_dir = model_dir/model_name
+    model = ClassifierECG(latent_dim, model_name)
+    model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
+    model.to(device)
+    model.eval()
+
+    # Fit a concept classifier and compute feature importance for each concept
+    car_classifiers = [CAR(device) for _ in concept_to_class]
+    test_set = ECGDataset(data_dir, train=False, balance_dataset=False, binarize_label=False)
+    y_test_full = test_set.y.clone()  # Labels containing concept information
+    test_set.y = torch.where(y_test_full >= 1, 1, 0).clone()
+    test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
+    attribution_dic = {}
+    baselines = torch.mean(test_set.X[y_test_full == 0], dim=0, keepdim=True).to(device)
+    for concept_name, car in zip(concept_to_class, car_classifiers):
+        logging.info(f"Now fitting CAR classifier for {concept_name}")
+        X_train, y_train = generate_ecg_concept_dataset(concept_to_class[concept_name], data_dir,
+                                                        True, 200, random_seed)
+        H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
+        car.fit(H_train, y_train)
+        logging.info(f"Now computing feature importance on the test set for {concept_name}")
+        concept_attribution_method = ConceptFeatureImportance("Integrated Gradient", car, model, device)
+        attribution_dic[concept_name] = concept_attribution_method.attribute(test_loader, baselines=baselines)
+        if plot:
+            logging.info(f"Saving plots in {save_dir} for {concept_name}")
+            X_test = test_set.X
+            plot_idx = [torch.nonzero(y_test_full == (n % 5))[n // 5].item() for n in range(30)]
+            for set_id in range(1, 5):
+                plot_time_series_saliency(X_test, attribution_dic[concept_name], plot_idx[set_id*5:(set_id+1)*5],
+                                          save_dir, f"ecg_set{set_id}", concept_name)
+    logging.info(f"Now computing vanilla feature importance")
+    vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
+    attribution_dic["Vanilla"] = vanilla_attribution_method.attribute(test_loader, baselines=baselines)
+    np.savez(save_dir/'attributions.npz', **attribution_dic)
+    if plot:
+        logging.info(f"Saving plots in {save_dir}")
+        plot_attribution_correlation(save_dir, "ecg")
+        X_test = test_set.X
+        plot_idx = [torch.nonzero(y_test_full == (n % 5))[n // 5].item() for n in range(30)]
+        for set_id in range(1, 5):
+            plot_time_series_saliency(X_test, attribution_dic["Vanilla"], plot_idx[set_id * 5:(set_id + 1) * 5],
+                                      save_dir, f"ecg_set{set_id}", "Vanilla")
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -211,5 +269,7 @@ if __name__ == "__main__":
         global_explanations(args.seeds[0], args.batch_size, args.latent_dim,  args.plot, model_name=model_name)
     elif args.name == "statistical_significance":
         statistical_significance(args.seeds[0], args.latent_dim, model_name=model_name)
+    elif args.name == "feature_importance":
+        feature_importance(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")

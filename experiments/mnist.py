@@ -202,7 +202,7 @@ def global_explanations(random_seed: int, batch_size: int, latent_dim: int,  plo
         plot_global_explanation(save_dir, "mnist")
 
 
-def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot: bool, n_perts: list[int],
+def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot: bool,
                        save_dir: Path = Path.cwd()/"results/mnist/feature_importance",
                        data_dir: Path = Path.cwd()/"data/mnist",
                        model_dir: Path = Path.cwd() / f"results/mnist",
@@ -219,13 +219,11 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
     model.to(device)
     model.eval()
 
-    # Fit a concept classifier and test accuracy for each concept
+    # Fit a concept classifier and compute feature importance for each concept
     car_classifiers = [CAR(device) for _ in concept_to_class]
-
     test_set = MNIST(data_dir, train=False, download=True)
     test_set.transform = transforms.Compose([transforms.ToTensor()])
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
-
     attribution_dic = {}
     baselines = torch.zeros((1, 1, 28, 28)).to(device)
     for concept_name, car in zip(concept_to_class, car_classifiers):
@@ -265,7 +263,6 @@ if __name__ == "__main__":
     parser.add_argument('--seeds', nargs="+", type=int, default=list(range(1, 10)))
     parser.add_argument("--batch_size", type=int, default=120)
     parser.add_argument("--latent_dim", type=int, default=5)
-    parser.add_argument("--n_perts", type=int, nargs="+", default=[1, 2, 5, 10, 20, 30])
     parser.add_argument("--train", action='store_true')
     parser.add_argument("--plot", action='store_true')
     args = parser.parse_args()
@@ -280,8 +277,7 @@ if __name__ == "__main__":
     elif args.name == "statistical_significance":
         statistical_significance(args.seeds[0], args.latent_dim, model_name=model_name)
     elif args.name == "feature_importance":
-        feature_importance(args.seeds[0], args.batch_size, args.latent_dim, args.plot, args.n_perts,
-                           model_name=model_name)
+        feature_importance(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 

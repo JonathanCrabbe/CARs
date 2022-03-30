@@ -83,8 +83,8 @@ def plot_attribution_correlation(results_dir: Path, dataset_name: str) \
     corr_matrix = correlation_matrix(attribution_dic)
     ax = sns.heatmap(corr_matrix, vmin=-1, vmax=1, cmap=sns.diverging_palette(10, 133, as_cmap=True), cbar=True,
                      xticklabels=attribution_dic.keys(), yticklabels=attribution_dic.keys(),
-                     cbar_kws={'label': 'Correlation'})
-    wrap_labels(ax, 10, False, True)
+                     cbar_kws={'label': 'Correlation'}, annot=True)
+    wrap_labels(ax, 12, True, True)
     plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_attr_corr.pdf")
     plt.close()
@@ -113,20 +113,25 @@ def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: 
 
 def plot_time_series_saliency(tseries: torch.Tensor, saliency: np.ndarray, plot_indices: list[int],
                               results_dir: Path, dataset_name: str, concept_name: str) -> None:
-    sns.set(font_scale=1.2)
+    sns.set(font_scale=1)
     sns.color_palette("colorblind")
     sns.set_style("white")
     T = tseries.shape[1]
     n_plots = len(plot_indices)
-    fig, axs = plt.subplots(ncols=1, nrows=n_plots, figsize=(3, 2.7*n_plots))
+    fig, axs = plt.subplots(ncols=1, nrows=n_plots, figsize=(20, 3*n_plots))
     for ax_id, example_id in enumerate(plot_indices):
         sub_saliency = saliency[example_id]
-        positive = sub_saliency > 0
         max_value = np.max(np.abs(sub_saliency))
         ax = axs[ax_id]
         sns.lineplot(x=list(range(T)), y=tseries[example_id].flatten(), ax=ax)
-        sns.scatterplot(x=list(range(T)), y=tseries[example_id].flatten(),
-                        hue=positive, size=np.abs(sub_saliency.flatten()), ax=ax)
+        scatter = ax.scatter(x=list(range(T)), y=tseries[example_id].flatten(),
+                             cmap=sns.diverging_palette(10, 133, as_cmap=True),
+                             c=sub_saliency.flatten(), vmin=-max_value, vmax=max_value)
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Voltage")
+        cbar = fig.colorbar(scatter, ax=ax)
+        cbar.set_label("Importance")
+    plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_{concept_name}_saliency.pdf")
     plt.close()
 
