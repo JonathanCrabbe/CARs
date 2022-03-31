@@ -260,7 +260,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default="concept_accuracy")
-    parser.add_argument('--seeds', nargs="+", type=int, default=list(range(1, 10)))
+    parser.add_argument('--seeds', nargs="+", type=int, default=list(range(1, 11)))
     parser.add_argument("--batch_size", type=int, default=120)
     parser.add_argument("--latent_dim", type=int, default=5)
     parser.add_argument("--train", action='store_true')

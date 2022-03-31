@@ -12,7 +12,7 @@ from utils.metrics import correlation_matrix
 
 
 def plot_concept_accuracy(results_dir: Path, concept: str, dataset_name: str) -> None:
-    sns.set(font_scale=1.2)
+    sns.set(font_scale=1)
     sns.color_palette("colorblind")
     sns.set_style("white")
     metrics_df = pd.read_csv(results_dir/"metrics.csv")

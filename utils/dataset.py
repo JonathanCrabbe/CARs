@@ -111,7 +111,7 @@ def generate_ecg_concept_dataset(concept_class: int, data_dir: Path, train: bool
     Returns:
         a concept dataset of the form X (features),y (concept labels)
     """
-    dataset = ECGDataset(data_dir, train, balance_dataset=False, random_seed=random_seed, binarize_label=False)
+    dataset = ECGDataset(data_dir, train, balance_dataset=True, random_seed=random_seed, binarize_label=False)
     targets = dataset.y
     mask = targets == concept_class
     positive_idx = torch.nonzero(mask).flatten()

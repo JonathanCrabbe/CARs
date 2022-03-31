@@ -38,10 +38,11 @@ def train_ecg_model(latent_dim: int, batch_size: int, model_name: str = "model",
 
 def concept_accuracy(random_seeds: list[int],  latent_dim: int, plot: bool,
                      save_dir: Path = Path.cwd()/"results/ecg/concept_accuracy",
-                     data_dir: Path = Path.cwd()/"data/ecg", model_name: str = "model") -> None:
+                     data_dir: Path = Path.cwd()/"data/ecg",
+                     model_dir: Path = Path.cwd()/"results/ecg", model_name: str = "model") -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     torch.manual_seed(random_seeds[0])
-    model_dir = save_dir/model_name
+    model_dir = model_dir / model_name
     representation_dir = save_dir / f"{model_name}_representations"
     if not representation_dir.exists():
         os.makedirs(representation_dir)
@@ -254,7 +255,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default="concept_accuracy")
-    parser.add_argument('--seeds', nargs="+", type=int, default=list(range(1, 10)))
+    parser.add_argument('--seeds', nargs="+", type=int, default=list(range(1, 11)))
     parser.add_argument("--batch_size", type=int, default=100)
     parser.add_argument("--latent_dim", type=int, default=32)
     parser.add_argument("--train", action='store_true')
