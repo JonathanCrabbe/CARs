@@ -1,6 +1,7 @@
 import itertools
 import logging
 import argparse
+import matplotlib.pyplot as plt
 import torch
 import numpy as np
 import os
@@ -12,9 +13,9 @@ from torchvision import transforms
 from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
 from utils.dataset import generate_mnist_concept_dataset
 from utils.plot import (plot_concept_accuracy, plot_global_explanation, plot_saliency_map,
-                        plot_attribution_correlation)
+                        plot_attribution_correlation, plot_counterfactual_images)
 from explanations.concept import CAR, CAV
-from explanations.feature import ConceptFeatureImportance, VanillaFeatureImportance
+from explanations.feature import ConceptFeatureImportance, VanillaFeatureImportance, CARCounterfactual, CAVCounterfactual
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
 
@@ -256,6 +257,59 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
                               save_dir, f"mnist_set{set_id}", "Vanilla")
 
 
+def counterfactual(random_seed: int, batch_size: int, latent_dim: int,  plot: bool,
+                   save_dir: Path = Path.cwd()/"results/mnist/counterfactual",
+                   data_dir: Path = Path.cwd()/"data/mnist",
+                   model_dir: Path = Path.cwd() / f"results/mnist",
+                   model_name: str = "model") -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    torch.manual_seed(random_seed)
+
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+
+    model_dir = model_dir/model_name
+    model = ClassifierMnist(latent_dim, model_name)
+    model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
+    model.to(device)
+    model.eval()
+
+    # Fit a concept classifier and compute feature importance for each concept
+    car_classifiers = [CAR(device) for _ in concept_to_class]
+    cav_classifiers = [CAV(device) for _ in concept_to_class]
+    test_set = MNIST(data_dir, train=False, download=True)
+    test_set.transform = transforms.Compose([transforms.ToTensor()])
+    small_test_set = torch.utils.data.Subset(test_set, list(range(500)))
+    test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
+    small_test_loader = torch.utils.data.DataLoader(small_test_set, batch_size=batch_size, shuffle=False)
+    for concept_name, car, cav in zip(concept_to_class, car_classifiers, cav_classifiers):
+        logging.info(f"Now fitting concept classifier for {concept_name}")
+        X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir,
+                                                          True, 200, random_seed)
+        H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
+        car.fit(H_train, y_train)
+        cav.fit(H_train, y_train)
+        logging.info(f"Now computing counterfactuals on the test set for {concept_name}")
+        car_counterfactual = CARCounterfactual(car, model, device)
+        cav_counterfactual = CAVCounterfactual(cav, model, device)
+        car_counterfactuals, car_flip_prop = car_counterfactual.generate(small_test_loader, 1000, 0, 10)
+        cav_counterfactuals, cav_flip_prop = cav_counterfactual.generate(small_test_loader, 1000, 0)
+        logging.info(f"{concept_name} concept flip proportion \t CAR: {car_flip_prop} \t CAV: {cav_flip_prop}")
+        if plot:
+            logging.info(f"Saving plots in {save_dir} for {concept_name}")
+            X_test = test_set.data
+            plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)]
+            for set_id in range(1, 5):
+                plot_counterfactual_images(X_test, car_counterfactuals, plot_idx[set_id*10:(set_id+1)*10],
+                                           save_dir, f"mnist_set{set_id}_CAR", concept_name)
+                plot_counterfactual_images(X_test, cav_counterfactuals, plot_idx[set_id * 10:(set_id + 1) * 10],
+                                           save_dir, f"mnist_set{set_id}_CAV", concept_name)
+
+    if plot:
+        logging.info(f"Saving plots in {save_dir}")
+        ...
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -278,6 +332,8 @@ if __name__ == "__main__":
         statistical_significance(args.seeds[0], args.latent_dim, model_name=model_name)
     elif args.name == "feature_importance":
         feature_importance(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
+    elif args.name == "counterfactual":
+        counterfactual(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 

@@ -97,7 +97,7 @@ def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: 
     sns.set_style("white")
     W = saliency.shape[-1]
     n_plots = len(plot_indices)
-    fig, axs = plt.subplots(ncols=1, nrows=n_plots, figsize=(3, 2.8*n_plots))
+    fig, axs = plt.subplots(ncols=1, nrows=n_plots, figsize=(1.5, 1.5*n_plots))
     for ax_id, example_id in enumerate(plot_indices):
         sub_saliency = saliency[example_id]
         max_value = np.max(np.abs(sub_saliency))
@@ -107,6 +107,7 @@ def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: 
         sns.heatmap(np.reshape(sub_saliency, (W, W)), linewidth=0, xticklabels=False, yticklabels=False,
                     ax=ax, cmap=sns.diverging_palette(10, 133, as_cmap=True), cbar=False,
                     alpha=.8, zorder=2, vmin=-max_value, vmax=max_value)
+    plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_{concept_name}_saliency.pdf")
     plt.close()
 
@@ -133,6 +134,27 @@ def plot_time_series_saliency(tseries: torch.Tensor, saliency: np.ndarray, plot_
         cbar.set_label("Importance")
     plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_{concept_name}_saliency.pdf")
+    plt.close()
+
+
+def plot_counterfactual_images(factuals: torch.Tensor, counterfactuals: np.ndarray, plot_indices: list[int],
+                               results_dir: Path, dataset_name: str, concept_name: str) -> None:
+    sns.set(font_scale=1.2)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
+    n_plots = len(plot_indices)
+    fig, axs = plt.subplots(ncols=2, nrows=n_plots, figsize=(3, 1.5*n_plots))
+    for ax_id, example_id in enumerate(plot_indices):
+        factual_image = factuals[example_id].cpu().numpy().astype(float)
+        ax = axs[ax_id, 0]
+        ax.imshow(factual_image, cmap='gray')
+        ax.axis('off')
+        ax = axs[ax_id, 1]
+        counterfactual_image = counterfactuals[example_id].squeeze()
+        ax.imshow(counterfactual_image, cmap='gray')
+        ax.axis('off')
+    plt.tight_layout()
+    plt.savefig(results_dir/f"{dataset_name}_{concept_name}_counterfactual.pdf")
     plt.close()
 
 

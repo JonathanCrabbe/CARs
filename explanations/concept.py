@@ -78,11 +78,11 @@ class ConceptExplainer(ABC):
         return self.concept_reps[self.concept_labels == int(positive_set)]
 
 
-
 class CAR(ConceptExplainer, ABC):
-    def __init__(self, device: torch.device, batch_size: int = 50, kernel: str = 'rbf'):
+    def __init__(self, device: torch.device, batch_size: int = 50, kernel: str = 'rbf', kernel_width: float = None):
         super(CAR, self).__init__(device, batch_size)
         self.kernel = kernel
+        self.kernel_width = kernel_width
 
     def fit(self, concept_reps: np.ndarray, concept_labels: np.ndarray) -> None:
         """
@@ -142,11 +142,14 @@ class CAR(ConceptExplainer, ABC):
         Returns: kernel function as a callable with arguments (h1, h2)
         """
         if self.kernel == 'rbf':
-            latent_reps_std = 1
+            if self.kernel_width is not None:
+                kernel_width = self.kernel_width
+            else:
+                kernel_width = 1.0
             latent_dim = self.concept_reps.shape[-1]
             # We unstack the tensors to return a kernel matrix of shape len(h1) x len(h2)!
             return lambda h1, h2: torch.exp(-torch.sum(((h1.unsqueeze(1) - h2.unsqueeze(0)) /
-                                                        (latent_dim*latent_reps_std))**2, dim=-1))
+                                                        (latent_dim*kernel_width))**2, dim=-1))
 
     def concept_density(self, latent_reps: torch.Tensor, positive_set: bool) -> torch.Tensor:
         """
@@ -209,7 +212,7 @@ class CAV(ConceptExplainer, ABC):
         latent_reps = torch.from_numpy(latent_reps).to(self.device).requires_grad_()
         outputs = rep_to_output(latent_reps)
         grads = torch.autograd.grad(outputs, latent_reps, grad_outputs=one_hot_labels)
-        cav = torch.tensor(self.classifier.coef_).to(self.device).float()
+        cav = self.get_activation_vector()
         return torch.einsum("bi,bi->b", cav, grads[0]).detach().cpu().numpy()
 
     def permutation_test(self, concept_reps: np.ndarray, concept_labels: np.ndarray,
@@ -229,6 +232,9 @@ class CAV(ConceptExplainer, ABC):
         score, permutation_scores, p_value = permutation_test_score(classifier, concept_reps, concept_labels,
                                                                     n_permutations=n_perm, n_jobs=n_jobs)
         return p_value
+
+    def get_activation_vector(self):
+        return torch.tensor(self.classifier.coef_).to(self.device).float()
 
 
 
