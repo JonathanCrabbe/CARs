@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-import optuna
 from torch.optim import Adam
 from tqdm import tqdm
 from captum import attr
@@ -8,7 +7,7 @@ from explanations.concept import ConceptExplainer, CAR, CAV
 from torch.utils.data import DataLoader
 
 
-class ConceptFeatureImportance:
+class CARFeatureImportance:
     def __init__(self, attribution_name: str, concept_explainer: ConceptExplainer,
                  black_box: torch.nn.Module, device: torch.device):
         assert attribution_name in {"Gradient Shap", "Integrated Gradient"}
@@ -59,6 +58,7 @@ class VanillaFeatureImportance:
         return attr
 
 
+"""
 class CARCounterfactual:
     def __init__(self, concept_explainer: CAR, black_box: torch.nn.Module, device: torch.device):
         self.concept_explainer = concept_explainer
@@ -110,6 +110,66 @@ class CARCounterfactual:
         study = optuna.create_study(direction="maximize")
         study.optimize(counterfactual_efficiency, n_trials=30)
         return study.best_params
+"""
+
+
+class CARCounterfactual:
+    def __init__(self, concept_explainer: CAR, black_box: torch.nn.Module, device: torch.device):
+        self.concept_explainer = concept_explainer
+        self.black_box = black_box.to(device)
+        self.device = device
+
+    def generate(self, data_loader: DataLoader, n_epochs: int, reg_factor: float, kernel_width: float) -> tuple:
+        self.concept_explainer.kernel_width = kernel_width
+        input_shape = list(next(iter(data_loader))[0].shape[1:])
+        batch_size = data_loader.batch_size
+        counterfactuals = np.empty(shape=[0]+input_shape)
+        # Generate counterfactuals
+        for factual_features, _ in tqdm(data_loader, unit="batch", leave=False):
+            factual_features = factual_features.to(self.device)
+            factual_reps = self.black_box.input_to_representation(factual_features).detach()
+            nearest_counterfactual_reps = ...
+            counterfactual_features = factual_features.clone().requires_grad_(True)
+            opt = Adam([counterfactual_features])
+            for epoch in range(n_epochs):
+                opt.zero_grad()
+                counterfactual_reps = self.black_box.input_to_representation(counterfactual_features)
+                concept_loss = torch.sum((nearest_counterfactual_reps-counterfactual_reps)**2)
+                l1_reg = torch.sum(torch.abs(counterfactual_features-factual_features))
+                loss = concept_loss + reg_factor*l1_reg
+                loss.backward()
+                opt.step()
+                counterfactual_features.data = torch.clamp(counterfactual_features.data, 0, 1)
+            counterfactuals = np.concatenate((counterfactuals, counterfactual_features.clone().detach().cpu().numpy()))
+        # Compute proportion of examples for which the concept flipped
+        succes_rates = []
+        for batch_id, (factual_features, _) in enumerate(data_loader):
+            factual_features = factual_features.to(self.device)
+            factual_reps = self.black_box.input_to_representation(factual_features).detach()
+            factual_concept = self.concept_explainer.predict(factual_reps.cpu().numpy())
+            counterfactual_features = torch.from_numpy(
+                counterfactuals[batch_size*batch_id:batch_size*batch_id+len(factual_features)]).to(self.device).float()
+            counterfactual_reps = self.black_box.input_to_representation(counterfactual_features).detach()
+            counterfactual_concept = self.concept_explainer.predict(counterfactual_reps.cpu().numpy())
+            succes_rates.append(np.count_nonzero(factual_concept != counterfactual_concept) / len(factual_concept))
+        return counterfactuals, np.mean(succes_rates)
+
+    def get_nearest_counterfactual_reps(self, factual_reps: torch.Tensor) -> torch.Tensor:
+        kernel = self.concept_explainer.get_kernel_function()
+        predicted_concepts = torch.from_numpy(self.concept_explainer.predict(factual_reps.cpu().numpy())).to(self.device)
+        positive_idx = (predicted_concepts == 1)
+        factual_positive_reps = factual_reps[positive_idx]
+        factual_negative_reps = factual_reps[~positive_idx]
+        concept_positive_reps = torch.from_numpy(self.concept_explainer.get_concept_reps(True)).to(self.device)
+        concept_negative_reps = torch.from_numpy(self.concept_explainer.get_concept_reps(False)).to(self.device)
+        positive_gram = kernel(factual_positive_reps, concept_negative_reps)
+        negative_gram = kernel(factual_negative_reps, concept_positive_reps)
+        nearest_negative_idx = torch.amax(positive_gram, -1)
+        nearest_positive_idx = torch.amax(negative_gram, -1)
+        counterfactual_positive_reps = concept_positive_reps[nearest_positive_idx]
+        counterfactual_negative_reps = concept_negative_reps[nearest_negative_idx]
+
+
 
 
 class CAVCounterfactual:

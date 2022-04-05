@@ -11,7 +11,7 @@ from utils.dataset import ECGDataset, generate_ecg_concept_dataset
 from models.ecg import ClassifierECG
 from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
 from explanations.concept import CAR, CAV
-from explanations.feature import ConceptFeatureImportance, VanillaFeatureImportance
+from explanations.feature import CARFeatureImportance, VanillaFeatureImportance
 from sklearn.metrics import accuracy_score
 from utils.plot import (plot_concept_accuracy, plot_global_explanation, plot_attribution_correlation,
                         plot_time_series_saliency)
@@ -228,7 +228,7 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
         car.fit(H_train, y_train)
         logging.info(f"Now computing feature importance on the test set for {concept_name}")
-        concept_attribution_method = ConceptFeatureImportance("Integrated Gradient", car, model, device)
+        concept_attribution_method = CARFeatureImportance("Integrated Gradient", car, model, device)
         attribution_dic[concept_name] = concept_attribution_method.attribute(test_loader, baselines=baselines)
         if plot:
             logging.info(f"Saving plots in {save_dir} for {concept_name}")

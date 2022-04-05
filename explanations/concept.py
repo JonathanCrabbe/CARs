@@ -67,7 +67,7 @@ class ConceptExplainer(ABC):
             p-value of the statistical significance test
         """
 
-    def get_concept_reps(self, positive_set: bool):
+    def get_concept_reps(self, positive_set: bool) -> np.ndarray:
         """
         Get the latent representation of the positive/negative examples
         Args:

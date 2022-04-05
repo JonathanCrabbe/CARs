@@ -15,7 +15,7 @@ from utils.dataset import generate_mnist_concept_dataset
 from utils.plot import (plot_concept_accuracy, plot_global_explanation, plot_saliency_map,
                         plot_attribution_correlation, plot_counterfactual_images)
 from explanations.concept import CAR, CAV
-from explanations.feature import ConceptFeatureImportance, VanillaFeatureImportance, CARCounterfactual, CAVCounterfactual
+from explanations.feature import CARFeatureImportance, VanillaFeatureImportance, CARCounterfactual, CAVCounterfactual
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
 
@@ -234,7 +234,7 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
         car.fit(H_train, y_train)
         logging.info(f"Now computing feature importance on the test set for {concept_name}")
-        concept_attribution_method = ConceptFeatureImportance("Integrated Gradient", car, model, device)
+        concept_attribution_method = CARFeatureImportance("Integrated Gradient", car, model, device)
         attribution_dic[concept_name] = concept_attribution_method.attribute(test_loader, baselines=baselines)
         if plot:
             logging.info(f"Saving plots in {save_dir} for {concept_name}")
