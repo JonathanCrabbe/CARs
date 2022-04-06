@@ -1,7 +1,6 @@
 import itertools
 import logging
 import argparse
-import matplotlib.pyplot as plt
 import torch
 import numpy as np
 import os
@@ -14,8 +13,9 @@ from utils.hooks import register_hooks, get_saved_representations, remove_all_ho
 from utils.dataset import generate_mnist_concept_dataset
 from utils.plot import (plot_concept_accuracy, plot_global_explanation, plot_saliency_map,
                         plot_attribution_correlation, plot_counterfactual_images)
+from utils.metrics import concept_impact, modulation_norm
 from explanations.concept import CAR, CAV
-from explanations.feature import CARFeatureImportance, VanillaFeatureImportance, CARCounterfactual, CAVCounterfactual
+from explanations.feature import CARFeatureImportance, VanillaFeatureImportance, CARModulator, CAVModulator
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
 
@@ -257,11 +257,11 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
                               save_dir, f"mnist_set{set_id}", "Vanilla")
 
 
-def counterfactual(random_seed: int, batch_size: int, latent_dim: int,  plot: bool,
-                   save_dir: Path = Path.cwd()/"results/mnist/counterfactual",
-                   data_dir: Path = Path.cwd()/"data/mnist",
-                   model_dir: Path = Path.cwd() / f"results/mnist",
-                   model_name: str = "model") -> None:
+def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot: bool,
+                       save_dir: Path = Path.cwd()/"results/mnist/concept_modulation",
+                       data_dir: Path = Path.cwd()/"data/mnist",
+                       model_dir: Path = Path.cwd() / f"results/mnist",
+                       model_name: str = "model") -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     torch.manual_seed(random_seed)
 
@@ -289,20 +289,25 @@ def counterfactual(random_seed: int, batch_size: int, latent_dim: int,  plot: bo
         H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
         car.fit(H_train, y_train)
         cav.fit(H_train, y_train)
-        logging.info(f"Now computing counterfactuals on the test set for {concept_name}")
-        car_counterfactual = CARCounterfactual(car, model, device)
-        cav_counterfactual = CAVCounterfactual(cav, model, device)
-        car_counterfactuals, car_flip_prop = car_counterfactual.generate(small_test_loader, 1000, 0, 10)
-        cav_counterfactuals, cav_flip_prop = cav_counterfactual.generate(small_test_loader, 1000, 0)
-        logging.info(f"{concept_name} concept flip proportion \t CAR: {car_flip_prop} \t CAV: {cav_flip_prop}")
+        logging.info(f"Now modulating the test set for {concept_name}")
+        car_modulator = CARModulator(car, model, device)
+        cav_modulator = CAVModulator(cav, model, device)
+        car_modulated_images = car_modulator.generate(test_loader, 1000, 10)
+        cav_modulated_images = cav_modulator.generate(test_loader, 1000)
+        car_impact = concept_impact(small_test_loader, car_modulated_images, model, car, device)
+        cav_impact = concept_impact(small_test_loader, cav_modulated_images, model, car, device)
+        car_distance = modulation_norm(small_test_loader, car_modulated_images, model, device)
+        cav_distance = modulation_norm(small_test_loader, cav_modulated_images, model, device)
+        logging.info(f"{concept_name} modulation impact \t CAR: {car_impact} \t CAV: {cav_impact}")
+        logging.info(f"{concept_name} modulation norm \t CAR: {car_distance} \t CAV: {cav_distance}")
         if plot:
             logging.info(f"Saving plots in {save_dir} for {concept_name}")
             X_test = test_set.data
             plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)]
             for set_id in range(1, 5):
-                plot_counterfactual_images(X_test, car_counterfactuals, plot_idx[set_id*10:(set_id+1)*10],
+                plot_counterfactual_images(X_test, car_modulated_images, plot_idx[set_id*10:(set_id+1)*10],
                                            save_dir, f"mnist_set{set_id}_CAR", concept_name)
-                plot_counterfactual_images(X_test, cav_counterfactuals, plot_idx[set_id * 10:(set_id + 1) * 10],
+                plot_counterfactual_images(X_test, cav_modulated_images, plot_idx[set_id * 10:(set_id + 1) * 10],
                                            save_dir, f"mnist_set{set_id}_CAV", concept_name)
 
     if plot:
@@ -332,8 +337,8 @@ if __name__ == "__main__":
         statistical_significance(args.seeds[0], args.latent_dim, model_name=model_name)
     elif args.name == "feature_importance":
         feature_importance(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
-    elif args.name == "counterfactual":
-        counterfactual(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
+    elif args.name == "concept_modulation":
+        concept_modulation(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 

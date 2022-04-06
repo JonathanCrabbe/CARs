@@ -1,10 +1,9 @@
 import itertools
-
 import torch
 import torch.nn as nn
 import numpy as np
 from torch.utils.data import DataLoader
-from explanations.concept import ConceptExplainer
+from explanations.concept import ConceptExplainer, CAR
 
 
 def perturbation_metric(data_loader: DataLoader, attribution: np.ndarray, device: torch.device, model: nn.Module,
@@ -59,3 +58,33 @@ def correlation_matrix(attribution_dic: dict[str, np.ndarray]) -> np.ndarray:
         corr_mat[entry_id//len(attribution_dic), entry_id%len(attribution_dic)] =\
             np.corrcoef(attribution_dic[name1].flatten(), attribution_dic[name2].flatten())[0, 1]
     return corr_mat
+
+
+def concept_impact(data_loader: DataLoader, counterfactuals: np.ndarray, black_box: nn.Module,
+                   car_explainer: CAR, device: torch.device):
+    batch_size = data_loader.batch_size
+    concept_impacts = []
+    for batch_id, (factual_features, _) in enumerate(data_loader):
+        factual_features = factual_features.to(device)
+        factual_reps = black_box.input_to_representation(factual_features).detach()
+        factual_concept = car_explainer.concept_importance(factual_reps).cpu().numpy()
+        counterfactual_features = torch.from_numpy(
+            counterfactuals[batch_size * batch_id:batch_size * batch_id + len(factual_features)]).to(device).float()
+        counterfactual_reps = black_box.input_to_representation(counterfactual_features).detach()
+        counterfactual_concept = car_explainer.concept_importance(counterfactual_reps).cpu().numpy()
+        concept_impacts.append(np.mean(np.abs(factual_concept - counterfactual_concept)))
+    return np.mean(concept_impacts)
+
+
+def modulation_norm(data_loader: DataLoader, modulated_inputs: np.ndarray, black_box: nn.Module, device: torch.device):
+    batch_size = data_loader.batch_size
+    counterfactual_distances = []
+    for batch_id, (factual_features, _) in enumerate(data_loader):
+        factual_features = factual_features.to(device).flatten(1)
+        modulated_features = torch.from_numpy(
+            modulated_inputs[batch_size * batch_id:batch_size * batch_id + len(factual_features)]
+        ).to(device).float().flatten(1)
+        counterfactual_distances.append(
+            torch.mean(torch.abs(factual_features-modulated_features)).item()
+        )
+    return np.mean(counterfactual_distances)

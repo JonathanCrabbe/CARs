@@ -58,14 +58,13 @@ class VanillaFeatureImportance:
         return attr
 
 
-"""
-class CARCounterfactual:
+class CARModulator:
     def __init__(self, concept_explainer: CAR, black_box: torch.nn.Module, device: torch.device):
         self.concept_explainer = concept_explainer
         self.black_box = black_box.to(device)
         self.device = device
 
-    def generate(self, data_loader: DataLoader, n_epochs: int, reg_factor: float, kernel_width: float) -> tuple:
+    def generate(self, data_loader: DataLoader, n_epochs: int, kernel_width: float) -> np.ndarray:
         self.concept_explainer.kernel_width = kernel_width
         input_shape = list(next(iter(data_loader))[0].shape[1:])
         batch_size = data_loader.batch_size
@@ -83,25 +82,55 @@ class CARCounterfactual:
                 counterfactual_reps = self.black_box.input_to_representation(counterfactual_features)
                 counterfactual_importance = self.concept_explainer.concept_importance(counterfactual_reps)
                 concept_loss = torch.sum(factual_sign*counterfactual_importance)
-                l1_reg = torch.sum(torch.abs(counterfactual_features-factual_features))
-                loss = concept_loss + reg_factor*l1_reg
-                loss.backward()
+                concept_loss.backward()
                 opt.step()
                 counterfactual_features.data = torch.clamp(counterfactual_features.data, 0, 1)
             counterfactuals = np.concatenate((counterfactuals, counterfactual_features.clone().detach().cpu().numpy()))
         # Compute proportion of examples for which the concept flipped
-        props_flip = []
+        concept_impact = []
         for batch_id, (factual_features, _) in enumerate(data_loader):
             factual_features = factual_features.to(self.device)
             factual_reps = self.black_box.input_to_representation(factual_features).detach()
-            factual_concept = self.concept_explainer.predict(factual_reps.cpu().numpy())
+            factual_concept = self.concept_explainer.concept_importance(factual_reps).cpu().numpy()
             counterfactual_features = torch.from_numpy(
                 counterfactuals[batch_size*batch_id:batch_size*batch_id+len(factual_features)]).to(self.device).float()
             counterfactual_reps = self.black_box.input_to_representation(counterfactual_features).detach()
-            counterfactual_concept = self.concept_explainer.predict(counterfactual_reps.cpu().numpy())
-            props_flip.append(np.count_nonzero(factual_concept != counterfactual_concept) / len(factual_concept))
-        return counterfactuals, np.mean(props_flip)
+            counterfactual_concept = self.concept_explainer.concept_importance(counterfactual_reps).cpu().numpy()
+            concept_impact.append(np.mean(np.abs(factual_concept-counterfactual_concept)))
+        return counterfactuals
 
+
+class CAVModulator:
+    def __init__(self, concept_explainer: CAV, black_box: torch.nn.Module, device: torch.device):
+        self.concept_explainer = concept_explainer
+        self.black_box = black_box.to(device)
+        self.device = device
+
+    def generate(self, data_loader: DataLoader, n_epochs: int) -> np.ndarray:
+        input_shape = list(next(iter(data_loader))[0].shape[1:])
+        generated_inputs = np.empty(shape=[0]+input_shape)
+        cav = self.concept_explainer.get_activation_vector()
+        # Generate counterfactuals
+        for factual_features, _ in tqdm(data_loader, unit="batch", leave=False):
+            factual_features = factual_features.to(self.device)
+            factual_reps = self.black_box.input_to_representation(factual_features).detach().cpu().numpy()
+            factual_concept = torch.from_numpy(self.concept_explainer.predict(factual_reps)).to(self.device)
+            factual_sign = torch.where(factual_concept > 0, 1, -1)
+            modulated_features = factual_features.clone().requires_grad_(True)
+            opt = Adam([modulated_features])
+            for epoch in range(n_epochs):
+                opt.zero_grad()
+                modulated_reps = self.black_box.input_to_representation(modulated_features)
+                modulated_proj = torch.einsum('bi,bi -> ', modulated_reps, cav)
+                concept_loss = torch.sum(factual_sign*modulated_proj)
+                concept_loss.backward()
+                opt.step()
+                modulated_features.data = torch.clamp(modulated_features.data, 0, 1)
+            generated_inputs = np.concatenate((generated_inputs, modulated_features.clone().detach().cpu().numpy()))
+        return generated_inputs
+
+
+"""
     def fit_hyperparameters(self, data_loader: DataLoader, n_epochs: int) -> dict[str, float]:
         def counterfactual_efficiency(trial: optuna.Trial) -> float:
             reg_factor = trial.suggest_float("reg_factor", 1e-5, 1e-1, log=True)
@@ -110,8 +139,6 @@ class CARCounterfactual:
         study = optuna.create_study(direction="maximize")
         study.optimize(counterfactual_efficiency, n_trials=30)
         return study.best_params
-"""
-
 
 class CARCounterfactual:
     def __init__(self, concept_explainer: CAR, black_box: torch.nn.Module, device: torch.device):
@@ -128,13 +155,13 @@ class CARCounterfactual:
         for factual_features, _ in tqdm(data_loader, unit="batch", leave=False):
             factual_features = factual_features.to(self.device)
             factual_reps = self.black_box.input_to_representation(factual_features).detach()
-            nearest_counterfactual_reps = ...
+            nearest_counterfactual_reps = self.get_nearest_counterfactual_reps(factual_reps)
             counterfactual_features = factual_features.clone().requires_grad_(True)
             opt = Adam([counterfactual_features])
             for epoch in range(n_epochs):
                 opt.zero_grad()
                 counterfactual_reps = self.black_box.input_to_representation(counterfactual_features)
-                concept_loss = torch.sum((nearest_counterfactual_reps-counterfactual_reps)**2)
+                concept_loss = torch.sum(torch.abs(nearest_counterfactual_reps-counterfactual_reps))
                 l1_reg = torch.sum(torch.abs(counterfactual_features-factual_features))
                 loss = concept_loss + reg_factor*l1_reg
                 loss.backward()
@@ -155,6 +182,7 @@ class CARCounterfactual:
         return counterfactuals, np.mean(succes_rates)
 
     def get_nearest_counterfactual_reps(self, factual_reps: torch.Tensor) -> torch.Tensor:
+        nearest_counterfactual_reps = torch.zeros(factual_reps.shape, device=self.device)
         kernel = self.concept_explainer.get_kernel_function()
         predicted_concepts = torch.from_numpy(self.concept_explainer.predict(factual_reps.cpu().numpy())).to(self.device)
         positive_idx = (predicted_concepts == 1)
@@ -164,54 +192,11 @@ class CARCounterfactual:
         concept_negative_reps = torch.from_numpy(self.concept_explainer.get_concept_reps(False)).to(self.device)
         positive_gram = kernel(factual_positive_reps, concept_negative_reps)
         negative_gram = kernel(factual_negative_reps, concept_positive_reps)
-        nearest_negative_idx = torch.amax(positive_gram, -1)
-        nearest_positive_idx = torch.amax(negative_gram, -1)
+        nearest_negative_idx = torch.argmax(positive_gram, -1)
+        nearest_positive_idx = torch.argmax(negative_gram, -1)
         counterfactual_positive_reps = concept_positive_reps[nearest_positive_idx]
         counterfactual_negative_reps = concept_negative_reps[nearest_negative_idx]
-
-
-
-
-class CAVCounterfactual:
-    def __init__(self, concept_explainer: CAV, black_box: torch.nn.Module, device: torch.device):
-        self.concept_explainer = concept_explainer
-        self.black_box = black_box.to(device)
-        self.device = device
-
-    def generate(self, data_loader: DataLoader, n_epochs: int, reg_factor: float) -> tuple:
-        input_shape = list(next(iter(data_loader))[0].shape[1:])
-        batch_size = data_loader.batch_size
-        counterfactuals = np.empty(shape=[0]+input_shape)
-        cav = self.concept_explainer.get_activation_vector()
-        # Generate counterfactuals
-        for factual_features, _ in tqdm(data_loader, unit="batch", leave=False):
-            factual_features = factual_features.to(self.device)
-            factual_reps = self.black_box.input_to_representation(factual_features).detach().cpu().numpy()
-            factual_concept = torch.from_numpy(self.concept_explainer.predict(factual_reps)).to(self.device)
-            factual_sign = torch.where(factual_concept > 0, 1, -1)
-            counterfactual_features = factual_features.clone().requires_grad_(True)
-            opt = Adam([counterfactual_features])
-            for epoch in range(n_epochs):
-                opt.zero_grad()
-                counterfactual_reps = self.black_box.input_to_representation(counterfactual_features)
-                counterfactual_proj = torch.einsum('bi,bi -> b', counterfactual_reps, cav)
-                concept_loss = torch.sum(factual_sign*counterfactual_proj)
-                l1_reg = torch.sum(torch.abs(counterfactual_features-factual_features))
-                loss = concept_loss + reg_factor*l1_reg
-                loss.backward()
-                opt.step()
-                counterfactual_features.data = torch.clamp(counterfactual_features.data, 0, 1)
-            counterfactuals = np.concatenate((counterfactuals, counterfactual_features.clone().detach().cpu().numpy()))
-        # Compute proportion of examples for which the concept flipped
-        props_flip = []
-        for batch_id, (factual_features, _) in enumerate(data_loader):
-            factual_features = factual_features.to(self.device)
-            factual_reps = self.black_box.input_to_representation(factual_features).detach()
-            factual_concept = self.concept_explainer.predict(factual_reps.cpu().numpy())
-            counterfactual_features = torch.from_numpy(
-                counterfactuals[batch_size*batch_id:batch_size*batch_id+len(factual_features)]).to(self.device).float()
-            counterfactual_reps = self.black_box.input_to_representation(counterfactual_features).detach()
-            counterfactual_concept = self.concept_explainer.predict(counterfactual_reps.cpu().numpy())
-            props_flip.append(np.count_nonzero(factual_concept != counterfactual_concept) / len(factual_concept))
-        return counterfactuals, np.mean(props_flip)
-
+        nearest_counterfactual_reps[positive_idx] = counterfactual_negative_reps
+        nearest_counterfactual_reps[~positive_idx] = counterfactual_positive_reps
+        return nearest_counterfactual_reps
+"""
