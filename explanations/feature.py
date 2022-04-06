@@ -64,40 +64,28 @@ class CARModulator:
         self.black_box = black_box.to(device)
         self.device = device
 
-    def generate(self, data_loader: DataLoader, n_epochs: int, kernel_width: float) -> np.ndarray:
+    def generate(self, data_loader: DataLoader, n_epochs: int, kernel_width: float) -> torch.Tensor:
         self.concept_explainer.kernel_width = kernel_width
         input_shape = list(next(iter(data_loader))[0].shape[1:])
-        batch_size = data_loader.batch_size
-        counterfactuals = np.empty(shape=[0]+input_shape)
+        generated_inputs = torch.empty(size=[0]+input_shape)
         # Generate counterfactuals
         for factual_features, _ in tqdm(data_loader, unit="batch", leave=False):
             factual_features = factual_features.to(self.device)
             factual_reps = self.black_box.input_to_representation(factual_features).detach()
             factual_importance = self.concept_explainer.concept_importance(factual_reps)
             factual_sign = torch.where(factual_importance > 0, 1, -1)
-            counterfactual_features = factual_features.clone().requires_grad_(True)
-            opt = Adam([counterfactual_features])
+            modulated_features = factual_features.clone().requires_grad_(True)
+            opt = Adam([modulated_features])
             for epoch in range(n_epochs):
                 opt.zero_grad()
-                counterfactual_reps = self.black_box.input_to_representation(counterfactual_features)
-                counterfactual_importance = self.concept_explainer.concept_importance(counterfactual_reps)
-                concept_loss = torch.sum(factual_sign*counterfactual_importance)
+                modulated_reps = self.black_box.input_to_representation(modulated_features)
+                modulated_importance = self.concept_explainer.concept_importance(modulated_reps)
+                concept_loss = torch.sum(factual_sign*modulated_importance)
                 concept_loss.backward()
                 opt.step()
-                counterfactual_features.data = torch.clamp(counterfactual_features.data, 0, 1)
-            counterfactuals = np.concatenate((counterfactuals, counterfactual_features.clone().detach().cpu().numpy()))
-        # Compute proportion of examples for which the concept flipped
-        concept_impact = []
-        for batch_id, (factual_features, _) in enumerate(data_loader):
-            factual_features = factual_features.to(self.device)
-            factual_reps = self.black_box.input_to_representation(factual_features).detach()
-            factual_concept = self.concept_explainer.concept_importance(factual_reps).cpu().numpy()
-            counterfactual_features = torch.from_numpy(
-                counterfactuals[batch_size*batch_id:batch_size*batch_id+len(factual_features)]).to(self.device).float()
-            counterfactual_reps = self.black_box.input_to_representation(counterfactual_features).detach()
-            counterfactual_concept = self.concept_explainer.concept_importance(counterfactual_reps).cpu().numpy()
-            concept_impact.append(np.mean(np.abs(factual_concept-counterfactual_concept)))
-        return counterfactuals
+                modulated_features.data = torch.clamp(modulated_features.data, 0, 1)
+            generated_inputs = torch.cat((generated_inputs, modulated_features.clone().detach().cpu()))
+        return generated_inputs
 
 
 class CAVModulator:
@@ -106,9 +94,9 @@ class CAVModulator:
         self.black_box = black_box.to(device)
         self.device = device
 
-    def generate(self, data_loader: DataLoader, n_epochs: int) -> np.ndarray:
+    def generate(self, data_loader: DataLoader, n_epochs: int) -> torch.Tensor:
         input_shape = list(next(iter(data_loader))[0].shape[1:])
-        generated_inputs = np.empty(shape=[0]+input_shape)
+        generated_inputs = torch.empty(size=[0]+input_shape)
         cav = self.concept_explainer.get_activation_vector()
         # Generate counterfactuals
         for factual_features, _ in tqdm(data_loader, unit="batch", leave=False):
@@ -121,12 +109,12 @@ class CAVModulator:
             for epoch in range(n_epochs):
                 opt.zero_grad()
                 modulated_reps = self.black_box.input_to_representation(modulated_features)
-                modulated_proj = torch.einsum('bi,bi -> ', modulated_reps, cav)
+                modulated_proj = torch.einsum('bi,bi -> b', modulated_reps, cav)
                 concept_loss = torch.sum(factual_sign*modulated_proj)
                 concept_loss.backward()
                 opt.step()
                 modulated_features.data = torch.clamp(modulated_features.data, 0, 1)
-            generated_inputs = np.concatenate((generated_inputs, modulated_features.clone().detach().cpu().numpy()))
+            generated_inputs = torch.cat((generated_inputs, modulated_features.clone().detach().cpu()))
         return generated_inputs
 
 

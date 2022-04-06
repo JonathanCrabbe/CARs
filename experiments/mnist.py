@@ -8,11 +8,12 @@ import pandas as pd
 from pathlib import Path
 from models.mnist import ClassifierMnist
 from torchvision.datasets import MNIST
+from torch.utils.data import DataLoader, TensorDataset
 from torchvision import transforms
 from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
 from utils.dataset import generate_mnist_concept_dataset
 from utils.plot import (plot_concept_accuracy, plot_global_explanation, plot_saliency_map,
-                        plot_attribution_correlation, plot_counterfactual_images)
+                        plot_attribution_correlation, plot_counterfactual_images, plot_modulation_impact)
 from utils.metrics import concept_impact, modulation_norm
 from explanations.concept import CAR, CAV
 from explanations.feature import CARFeatureImportance, VanillaFeatureImportance, CARModulator, CAVModulator
@@ -279,9 +280,10 @@ def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot
     cav_classifiers = [CAV(device) for _ in concept_to_class]
     test_set = MNIST(data_dir, train=False, download=True)
     test_set.transform = transforms.Compose([transforms.ToTensor()])
-    small_test_set = torch.utils.data.Subset(test_set, list(range(500)))
+    small_test_set = torch.utils.data.Subset(test_set, list(range(100)))
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
     small_test_loader = torch.utils.data.DataLoader(small_test_set, batch_size=batch_size, shuffle=False)
+    results_data = []
     for concept_name, car, cav in zip(concept_to_class, car_classifiers, cav_classifiers):
         logging.info(f"Now fitting concept classifier for {concept_name}")
         X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir,
@@ -289,30 +291,36 @@ def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot
         H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
         car.fit(H_train, y_train)
         cav.fit(H_train, y_train)
-        logging.info(f"Now modulating the test set for {concept_name}")
         car_modulator = CARModulator(car, model, device)
         cav_modulator = CAVModulator(cav, model, device)
+        logging.info(f"Now modulating the test set for {concept_name} with CAR")
         car_modulated_images = car_modulator.generate(test_loader, 1000, 10)
+        logging.info(f"Now modulating the test set for {concept_name} with CAV")
         cav_modulated_images = cav_modulator.generate(test_loader, 1000)
-        car_impact = concept_impact(small_test_loader, car_modulated_images, model, car, device)
-        cav_impact = concept_impact(small_test_loader, cav_modulated_images, model, car, device)
-        car_distance = modulation_norm(small_test_loader, car_modulated_images, model, device)
-        cav_distance = modulation_norm(small_test_loader, cav_modulated_images, model, device)
-        logging.info(f"{concept_name} modulation impact \t CAR: {car_impact} \t CAV: {cav_impact}")
-        logging.info(f"{concept_name} modulation norm \t CAR: {car_distance} \t CAV: {cav_distance}")
+        car_modulated_loader = DataLoader(TensorDataset(car_modulated_images), batch_size, shuffle=False)
+        cav_modulated_loader = DataLoader(TensorDataset(cav_modulated_images), batch_size, shuffle=False)
+        car_impacts = concept_impact(test_loader, car_modulated_loader, model, car, device)
+        cav_impacts = concept_impact(test_loader, cav_modulated_loader, model, car, device)
+        car_distances = modulation_norm(test_loader, car_modulated_loader, device)
+        cav_distances = modulation_norm(test_loader, cav_modulated_loader, device)
+        results_data += [[concept_name, "CAR", car_impact, car_distance]
+                         for car_impact, car_distance in zip(car_impacts, car_distances)]
+        results_data += [[concept_name, "CAV", cav_impact, cav_distance]
+                         for cav_impact, cav_distance in zip(cav_impacts, cav_distances)]
         if plot:
             logging.info(f"Saving plots in {save_dir} for {concept_name}")
             X_test = test_set.data
             plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)]
             for set_id in range(1, 5):
-                plot_counterfactual_images(X_test, car_modulated_images, plot_idx[set_id*10:(set_id+1)*10],
+                plot_counterfactual_images(X_test, car_modulated_images.numpy(), plot_idx[set_id*10:(set_id+1)*10],
                                            save_dir, f"mnist_set{set_id}_CAR", concept_name)
-                plot_counterfactual_images(X_test, cav_modulated_images, plot_idx[set_id * 10:(set_id + 1) * 10],
+                plot_counterfactual_images(X_test, cav_modulated_images.numpy(), plot_idx[set_id * 10:(set_id + 1) * 10],
                                            save_dir, f"mnist_set{set_id}_CAV", concept_name)
-
+    results_df = pd.DataFrame(results_data, columns=["Concept", "Method", "Concept Shift", "Modulation Norm"])
+    results_df.to_csv(save_dir / "metrics.csv")
     if plot:
         logging.info(f"Saving plots in {save_dir}")
-        ...
+        plot_modulation_impact(save_dir, "mnist")
 
 
 if __name__ == "__main__":

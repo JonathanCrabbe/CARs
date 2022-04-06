@@ -1,4 +1,6 @@
 import itertools
+
+import numpy
 import torch
 import torch.nn as nn
 import numpy as np
@@ -60,31 +62,24 @@ def correlation_matrix(attribution_dic: dict[str, np.ndarray]) -> np.ndarray:
     return corr_mat
 
 
-def concept_impact(data_loader: DataLoader, counterfactuals: np.ndarray, black_box: nn.Module,
-                   car_explainer: CAR, device: torch.device):
-    batch_size = data_loader.batch_size
+def concept_impact(original_loader: DataLoader, modulated_loader: DataLoader, black_box: nn.Module,
+                   car_explainer: CAR, device: torch.device) -> list:
     concept_impacts = []
-    for batch_id, (factual_features, _) in enumerate(data_loader):
+    for (factual_features, _), [modulated_features] in zip(original_loader, modulated_loader):
         factual_features = factual_features.to(device)
         factual_reps = black_box.input_to_representation(factual_features).detach()
-        factual_concept = car_explainer.concept_importance(factual_reps).cpu().numpy()
-        counterfactual_features = torch.from_numpy(
-            counterfactuals[batch_size * batch_id:batch_size * batch_id + len(factual_features)]).to(device).float()
-        counterfactual_reps = black_box.input_to_representation(counterfactual_features).detach()
-        counterfactual_concept = car_explainer.concept_importance(counterfactual_reps).cpu().numpy()
-        concept_impacts.append(np.mean(np.abs(factual_concept - counterfactual_concept)))
-    return np.mean(concept_impacts)
+        factual_importance = car_explainer.concept_importance(factual_reps).cpu().numpy()
+        modulated_features = modulated_features.to(device).float()
+        modulated_reps = black_box.input_to_representation(modulated_features).detach()
+        modulated_importance = car_explainer.concept_importance(modulated_reps).cpu().numpy()
+        concept_impacts.append(np.mean(np.abs(factual_importance - modulated_importance)))
+    return concept_impacts
 
 
-def modulation_norm(data_loader: DataLoader, modulated_inputs: np.ndarray, black_box: nn.Module, device: torch.device):
-    batch_size = data_loader.batch_size
+def modulation_norm(original_loader: DataLoader, modulated_loader: DataLoader, device: torch.device) -> list:
     counterfactual_distances = []
-    for batch_id, (factual_features, _) in enumerate(data_loader):
+    for (factual_features, _), [modulated_features] in zip(original_loader, modulated_loader):
         factual_features = factual_features.to(device).flatten(1)
-        modulated_features = torch.from_numpy(
-            modulated_inputs[batch_size * batch_id:batch_size * batch_id + len(factual_features)]
-        ).to(device).float().flatten(1)
-        counterfactual_distances.append(
-            torch.mean(torch.abs(factual_features-modulated_features)).item()
-        )
-    return np.mean(counterfactual_distances)
+        modulated_features = modulated_features.to(device).float().flatten(1)
+        counterfactual_distances.append(torch.mean(torch.abs(factual_features-modulated_features)).item())
+    return counterfactual_distances

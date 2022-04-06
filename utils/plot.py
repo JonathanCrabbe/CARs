@@ -137,6 +137,18 @@ def plot_time_series_saliency(tseries: torch.Tensor, saliency: np.ndarray, plot_
     plt.close()
 
 
+def plot_modulation_impact(results_dir: Path, dataset_name: str) -> None:
+    sns.set(font_scale=.8)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
+    metrics_df = pd.read_csv(results_dir/"metrics.csv")
+    ax = sns.displot(metrics_df, x="Concept Shift", hue="Method", kind="kde", fill=True)
+    plt.savefig(results_dir/f"{dataset_name}_concept_shift.pdf")
+    plt.close()
+    ax = sns.displot(metrics_df, x="Modulation Norm", hue="Method", kind="kde", fill=True)
+    plt.savefig(results_dir / f"{dataset_name}_modulation_norm.pdf")
+    plt.close()
+
 def plot_counterfactual_images(factuals: torch.Tensor, counterfactuals: np.ndarray, plot_indices: list[int],
                                results_dir: Path, dataset_name: str, concept_name: str) -> None:
     sns.set(font_scale=1.2)
