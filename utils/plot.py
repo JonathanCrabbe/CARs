@@ -149,6 +149,7 @@ def plot_modulation_impact(results_dir: Path, dataset_name: str) -> None:
     plt.savefig(results_dir / f"{dataset_name}_modulation_norm.pdf")
     plt.close()
 
+
 def plot_counterfactual_images(factuals: torch.Tensor, counterfactuals: np.ndarray, plot_indices: list[int],
                                results_dir: Path, dataset_name: str, concept_name: str) -> None:
     sns.set(font_scale=1.2)
@@ -165,6 +166,29 @@ def plot_counterfactual_images(factuals: torch.Tensor, counterfactuals: np.ndarr
         counterfactual_image = counterfactuals[example_id].squeeze()
         ax.imshow(counterfactual_image, cmap='gray')
         ax.axis('off')
+    plt.tight_layout()
+    plt.savefig(results_dir/f"{dataset_name}_{concept_name}_counterfactual.pdf")
+    plt.close()
+
+
+def plot_counterfactual_series(factuals: torch.Tensor, counterfactuals: np.ndarray, plot_indices: list[int],
+                               results_dir: Path, dataset_name: str, concept_name: str) -> None:
+    sns.set(font_scale=1.2)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
+    n_plots = len(plot_indices)
+    fig, axs = plt.subplots(ncols=2, nrows=n_plots, figsize=(7, 1.5*n_plots))
+    for ax_id, example_id in enumerate(plot_indices):
+        factual_series = factuals[example_id].cpu().numpy().astype(float).squeeze()
+        ax = axs[ax_id, 0]
+        sns.lineplot(x=list(range(len(factual_series))), y=factual_series, ax=ax)
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Voltage")
+        ax = axs[ax_id, 1]
+        counterfactual_series = counterfactuals[example_id].squeeze()
+        sns.lineplot(x=list(range(len(counterfactual_series))), y=counterfactual_series, ax=ax)
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Voltage")
     plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_{concept_name}_counterfactual.pdf")
     plt.close()
