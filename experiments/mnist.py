@@ -308,14 +308,13 @@ def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot
         results_data += [[concept_name, "CAV", cav_impact, cav_distance]
                          for cav_impact, cav_distance in zip(cav_impacts, cav_distances)]
         if plot:
+            modulated_images = [car_modulated_images.numpy(), cav_modulated_images.numpy()]
             logging.info(f"Saving plots in {save_dir} for {concept_name}")
             X_test = test_set.data
             plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)]
             for set_id in range(1, 5):
-                plot_counterfactual_images(X_test, car_modulated_images.numpy(), plot_idx[set_id*10:(set_id+1)*10],
-                                           save_dir, f"mnist_set{set_id}_CAR", concept_name)
-                plot_counterfactual_images(X_test, cav_modulated_images.numpy(), plot_idx[set_id * 10:(set_id + 1) * 10],
-                                           save_dir, f"mnist_set{set_id}_CAV", concept_name)
+                plot_counterfactual_images(X_test, modulated_images, plot_idx[set_id*10:(set_id+1)*10],
+                                           save_dir, f"mnist_set{set_id}", concept_name)
     results_df = pd.DataFrame(results_data, columns=["Concept", "Method", "Concept Shift", "Modulation Norm"])
     results_df.to_csv(save_dir / "metrics.csv")
     if plot:

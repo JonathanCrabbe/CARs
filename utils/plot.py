@@ -150,45 +150,62 @@ def plot_modulation_impact(results_dir: Path, dataset_name: str) -> None:
     plt.close()
 
 
-def plot_counterfactual_images(factuals: torch.Tensor, counterfactuals: np.ndarray, plot_indices: list[int],
+def plot_counterfactual_images(factuals: torch.Tensor, counterfactuals: list[np.ndarray], plot_indices: list[int],
                                results_dir: Path, dataset_name: str, concept_name: str) -> None:
-    sns.set(font_scale=1.2)
+    sns.set(font_scale=1.0)
     sns.color_palette("colorblind")
     sns.set_style("white")
     n_plots = len(plot_indices)
-    fig, axs = plt.subplots(ncols=2, nrows=n_plots, figsize=(3, 1.5*n_plots))
+    n_cols = len(counterfactuals) + 1
+    fig, axs = plt.subplots(ncols=n_cols, nrows=n_plots, figsize=(2*n_cols, 2*n_plots))
     for ax_id, example_id in enumerate(plot_indices):
         factual_image = factuals[example_id].cpu().numpy().astype(float)
         ax = axs[ax_id, 0]
         ax.imshow(factual_image, cmap='gray')
         ax.axis('off')
+        ax.set_title('Original')
         ax = axs[ax_id, 1]
-        counterfactual_image = counterfactuals[example_id].squeeze()
+        counterfactual_image = counterfactuals[0][example_id].squeeze()
         ax.imshow(counterfactual_image, cmap='gray')
         ax.axis('off')
+        ax.set_title('CAR Modulated')
+        ax = axs[ax_id, 2]
+        counterfactual_image = counterfactuals[1][example_id].squeeze()
+        ax.imshow(counterfactual_image, cmap='gray')
+        ax.axis('off')
+        ax.set_title('CAV Modulated')
     plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_{concept_name}_counterfactual.pdf")
     plt.close()
 
 
-def plot_counterfactual_series(factuals: torch.Tensor, counterfactuals: np.ndarray, plot_indices: list[int],
+def plot_counterfactual_series(factuals: torch.Tensor, counterfactuals: list[np.ndarray], plot_indices: list[int],
                                results_dir: Path, dataset_name: str, concept_name: str) -> None:
     sns.set(font_scale=1.2)
     sns.color_palette("colorblind")
     sns.set_style("white")
     n_plots = len(plot_indices)
-    fig, axs = plt.subplots(ncols=2, nrows=n_plots, figsize=(7, 1.5*n_plots))
+    n_cols = len(counterfactuals) + 1
+    fig, axs = plt.subplots(ncols=n_cols, nrows=n_plots, figsize=(4*n_cols, 2*n_plots))
     for ax_id, example_id in enumerate(plot_indices):
         factual_series = factuals[example_id].cpu().numpy().astype(float).squeeze()
         ax = axs[ax_id, 0]
         sns.lineplot(x=list(range(len(factual_series))), y=factual_series, ax=ax)
         ax.set_xlabel("Time")
         ax.set_ylabel("Voltage")
+        ax.set_title('Original')
         ax = axs[ax_id, 1]
-        counterfactual_series = counterfactuals[example_id].squeeze()
+        counterfactual_series = counterfactuals[0][example_id].squeeze()
         sns.lineplot(x=list(range(len(counterfactual_series))), y=counterfactual_series, ax=ax)
         ax.set_xlabel("Time")
         ax.set_ylabel("Voltage")
+        ax.set_title('CAR Modulated')
+        ax = axs[ax_id, 2]
+        counterfactual_series = counterfactuals[1][example_id].squeeze()
+        sns.lineplot(x=list(range(len(counterfactual_series))), y=counterfactual_series, ax=ax)
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Voltage")
+        ax.set_title('CAV Modulated')
     plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_{concept_name}_counterfactual.pdf")
     plt.close()

@@ -286,11 +286,11 @@ def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot
         car_modulator = CARModulator(car, model, device)
         cav_modulator = CAVModulator(cav, model, device)
         logging.info(f"Now modulating the test set for {concept_name} with CAR")
-        car_modulated_images = car_modulator.generate(test_loader, 1000, 10)
+        car_modulated_series = car_modulator.generate(test_loader, 1000, 10)
         logging.info(f"Now modulating the test set for {concept_name} with CAV")
-        cav_modulated_images = cav_modulator.generate(test_loader, 1000)
-        car_modulated_loader = DataLoader(TensorDataset(car_modulated_images), batch_size, shuffle=False)
-        cav_modulated_loader = DataLoader(TensorDataset(cav_modulated_images), batch_size, shuffle=False)
+        cav_modulated_series = cav_modulator.generate(test_loader, 1000)
+        car_modulated_loader = DataLoader(TensorDataset(car_modulated_series), batch_size, shuffle=False)
+        cav_modulated_loader = DataLoader(TensorDataset(cav_modulated_series), batch_size, shuffle=False)
         car_impacts = concept_impact(test_loader, car_modulated_loader, model, car, device)
         cav_impacts = concept_impact(test_loader, cav_modulated_loader, model, car, device)
         car_distances = modulation_norm(test_loader, car_modulated_loader, device)
@@ -300,14 +300,13 @@ def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot
         results_data += [[concept_name, "CAV", cav_impact, cav_distance]
                          for cav_impact, cav_distance in zip(cav_impacts, cav_distances)]
         if plot:
+            modulated_series = [car_modulated_series.numpy(), cav_modulated_series.numpy()]
             logging.info(f"Saving plots in {save_dir} for {concept_name}")
             X_test = test_set.X
             plot_idx = [torch.nonzero(test_set.y == (n % 5))[n // 5].item() for n in range(100)]
             for set_id in range(1, 5):
-                plot_counterfactual_series(X_test, car_modulated_images.numpy(), plot_idx[set_id*5:(set_id+1)*5],
-                                           save_dir, f"ecg_set{set_id}_CAR", concept_name)
-                plot_counterfactual_series(X_test, cav_modulated_images.numpy(), plot_idx[set_id * 5:(set_id + 1) * 5],
-                                           save_dir, f"ecg_set{set_id}_CAV", concept_name)
+                plot_counterfactual_series(X_test, modulated_series, plot_idx[set_id*5:(set_id+1)*5],
+                                           save_dir, f"ecg_set{set_id}", concept_name)
     results_df = pd.DataFrame(results_data, columns=["Concept", "Method", "Concept Shift", "Modulation Norm"])
     results_df.to_csv(save_dir / "metrics.csv")
     if plot:
