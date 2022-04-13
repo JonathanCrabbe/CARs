@@ -1,6 +1,4 @@
 import itertools
-
-import numpy
 import torch
 import torch.nn as nn
 import numpy as np
@@ -83,3 +81,22 @@ def modulation_norm(original_loader: DataLoader, modulated_loader: DataLoader, d
         modulated_features = modulated_features.to(device).float().flatten(1)
         counterfactual_distances.append(torch.mean(torch.abs(factual_features-modulated_features)).item())
     return counterfactual_distances
+
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self, name):
+        self.name = name
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
