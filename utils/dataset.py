@@ -4,8 +4,7 @@ import logging
 import torch
 import pickle
 import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
+import linecache
 from PIL import Image
 from torchvision.datasets import MNIST
 from torchvision import transforms
@@ -19,6 +18,7 @@ from imblearn.over_sampling import SMOTE
 The code for the CUB dataset is adapted from 
 https://github.com/yewsiang/ConceptBottleneck/tree/a2fd8184ad609bf0fb258c0b1c7a0cc44989f68f
 """
+
 
 class ECGDataset(Dataset, ABC):
     def __init__(self, data_dir: Path, train: bool, balance_dataset: bool,
@@ -73,6 +73,12 @@ class CUBDataset(Dataset):
 
     N_ATTRIBUTES = 312
     N_CLASSES = 200
+    attribute_map = [1, 4, 6, 7, 10, 14, 15, 20, 21, 23, 25, 29, 30, 35, 36, 38, 40, 44, 45, 50, 51, 53, 54, 56, 57, 59,
+                     63, 64, 69, 70, 72, 75, 80, 84, 90, 91, 93, 99, 101, 106, 110, 111, 116, 117, 119, 125, 126, 131,
+                     132, 134, 145, 149, 151, 152, 153, 157, 158, 163, 164, 168, 172, 178, 179, 181, 183, 187, 188, 193,
+                     194, 196, 198, 202, 203, 208, 209, 211, 212, 213, 218, 220, 221, 225, 235, 236, 238, 239, 240,
+                     242, 243, 244, 249, 253, 254, 259, 260, 262, 268, 274, 277, 283, 289, 292, 293, 294, 298, 299, 304,
+                     305, 308, 309, 310, 311]
 
     def __init__(self, pkl_file_paths, use_attr, no_img, uncertain_label, image_dir, n_class_attr, transform=None):
         """
@@ -140,6 +146,39 @@ class CUBDataset(Dataset):
         else:
             return img, class_label
 
+    def concept_instance_count(self, concept_id) -> int:
+        """
+        Counts the number of time a concept appears in the dataset
+        Args:
+            concept_id: integer identifying the concept
+
+        Returns:
+            Integer counting the occurrence of the concept
+        """
+        count = 0
+        for data_dic in self.data:
+            count += data_dic["attribute_label"][concept_id]
+        return count
+
+    def concept_name(self, concept_id) -> str:
+        """
+        Get the name of a concept
+        Args:
+            concep_id: integer identifying the concept
+
+        Returns:
+            String corresponding to the concept name
+        """
+        attributes_path = Path(self.image_dir)/"attributes/attributes.txt"
+        full_name = linecache.getline(str(attributes_path), self.attribute_map[concept_id])
+        full_name = full_name.split(" ")[1]  # Remove the line number
+        concept_name, concept_value = full_name.split("::")
+        concept_value = concept_value[:-1] # Remove the breakline character
+        concept_value = concept_value.replace("_", " ")  # Put spacing in concept values
+        concept_name = concept_name[4:]  # Remove the "has_" characters
+        concept_name = concept_name.replace("_", " ")  # Put spacing in concept names
+        return f"{concept_value} {concept_name}".title()
+
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
     """Samples elements randomly from a given list of indices for imbalanced dataset
@@ -182,6 +221,50 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
 
     def __len__(self):
         return self.num_samples
+
+
+def load_cub_data(pkl_paths, use_attr, no_img, batch_size, uncertain_label=False,
+                  n_class_attr=2, image_dir='images', resampling=False, resol=299):
+    """
+    Note: Inception needs (299,299,3) images with inputs scaled between -1 and 1
+    Loads data with transformations applied, and upsample the minority class if there is class imbalance and weighted loss is not used
+    NOTE: resampling is customized for first attribute only, so change sampler.py if necessary
+    """
+    resized_resol = int(resol * 256/224)
+    is_training = any(['train.pkl' in f for f in pkl_paths])
+    if is_training:
+        transform = transforms.Compose([
+            #transforms.Resize((resized_resol, resized_resol)),
+            #transforms.RandomSizedCrop(resol),
+            transforms.ColorJitter(brightness=32/255, saturation=(0.5, 1.5)),
+            transforms.RandomResizedCrop(resol),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(), #implicitly divides by 255
+            #transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
+            transforms.Normalize(mean = [ 0.485, 0.456, 0.406 ], std = [ 0.229, 0.224, 0.225 ]),
+            ])
+    else:
+        transform = transforms.Compose([
+            #transforms.Resize((resized_resol, resized_resol)),
+            transforms.CenterCrop(resol),
+            transforms.ToTensor(), #implicitly divides by 255
+            #transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
+            transforms.Normalize(mean = [ 0.485, 0.456, 0.406 ], std = [ 0.229, 0.224, 0.225 ]),
+            ])
+
+    dataset = CUBDataset(pkl_paths, use_attr, no_img, uncertain_label, image_dir, n_class_attr, transform)
+    if is_training:
+        drop_last = True
+        shuffle = True
+    else:
+        drop_last = False
+        shuffle = False
+    if resampling:
+        sampler = BatchSampler(ImbalancedDatasetSampler(dataset), batch_size=batch_size, drop_last=drop_last)
+        loader = DataLoader(dataset, batch_sampler=sampler)
+    else:
+        loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last)
+    return loader
 
 def generate_mnist_concept_dataset(concept_classes: list[int], data_dir: Path, train: bool, subset_size: int,
                                    random_seed: int) -> tuple:
@@ -252,47 +335,6 @@ def generate_ecg_concept_dataset(concept_class: int, data_dir: Path, train: bool
     return X[rand_perm], y[rand_perm]
 
 
-def load_cub_data(pkl_paths, use_attr, no_img, batch_size, uncertain_label=False,
-                  n_class_attr=2, image_dir='images', resampling=False, resol=299):
-    """
-    Note: Inception needs (299,299,3) images with inputs scaled between -1 and 1
-    Loads data with transformations applied, and upsample the minority class if there is class imbalance and weighted loss is not used
-    NOTE: resampling is customized for first attribute only, so change sampler.py if necessary
-    """
-    resized_resol = int(resol * 256/224)
-    is_training = any(['train.pkl' in f for f in pkl_paths])
-    if is_training:
-        transform = transforms.Compose([
-            #transforms.Resize((resized_resol, resized_resol)),
-            #transforms.RandomSizedCrop(resol),
-            transforms.ColorJitter(brightness=32/255, saturation=(0.5, 1.5)),
-            transforms.RandomResizedCrop(resol),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(), #implicitly divides by 255
-            #transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
-            transforms.Normalize(mean = [ 0.485, 0.456, 0.406 ], std = [ 0.229, 0.224, 0.225 ]),
-            ])
-    else:
-        transform = transforms.Compose([
-            #transforms.Resize((resized_resol, resized_resol)),
-            transforms.CenterCrop(resol),
-            transforms.ToTensor(), #implicitly divides by 255
-            #transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
-            transforms.Normalize(mean = [ 0.485, 0.456, 0.406 ], std = [ 0.229, 0.224, 0.225 ]),
-            ])
 
-    dataset = CUBDataset(pkl_paths, use_attr, no_img, uncertain_label, image_dir, n_class_attr, transform)
-    if is_training:
-        drop_last = True
-        shuffle = True
-    else:
-        drop_last = False
-        shuffle = False
-    if resampling:
-        sampler = BatchSampler(ImbalancedDatasetSampler(dataset), batch_size=batch_size, drop_last=drop_last)
-        loader = DataLoader(dataset, batch_sampler=sampler)
-    else:
-        loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last)
-    return loader
 
 

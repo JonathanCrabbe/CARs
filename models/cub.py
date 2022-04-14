@@ -155,7 +155,7 @@ class CUBClassifier(nn.Module):
         #optim = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=1e-05)
         optim = torch.optim.SGD(self.parameters(), lr=lr, weight_decay=4e-05, momentum=.9)
         waiting_epoch = 0
-        best_test_loss = float("inf")
+        best_test_acc = 0
         for epoch in range(n_epoch):
             train_loss = self.train_epoch(device, train_loader, optim)
             test_loss, test_acc = self.test_epoch(device, test_loader)
@@ -163,7 +163,7 @@ class CUBClassifier(nn.Module):
                          f'Train Loss {train_loss:.3g} \t '
                          f'Test Loss {test_loss:.3g} \t'
                          f'Test Accuracy {test_acc * 100:.3g}% \t ')
-            if test_loss >= best_test_loss:
+            if test_acc <= best_test_acc:
                 waiting_epoch += 1
                 logging.info(f'No improvement over the best epoch \t Patience {waiting_epoch} / {patience}')
             else:
@@ -171,7 +171,7 @@ class CUBClassifier(nn.Module):
                 self.cpu()
                 self.save(save_dir)
                 self.to(device)
-                best_test_loss = test_loss.data
+                best_test_acc = test_acc.data
                 waiting_epoch = 0
             if checkpoint_interval > 0 and epoch % checkpoint_interval == 0:
                 n_checkpoint = 1 + epoch // checkpoint_interval
