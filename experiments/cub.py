@@ -2,8 +2,9 @@ import torch
 import os
 import logging
 import argparse
+import matplotlib.pyplot as plt
 from pathlib import Path
-from utils.dataset import load_cub_data, CUBDataset
+from utils.dataset import load_cub_data, CUBDataset, generate_cub_concept_dataset
 from models.cub import CUBClassifier
 from utils.hooks import register_hooks, remove_all_hooks, get_saved_representations
 
@@ -24,13 +25,17 @@ def fit_model(batch_size: int, n_epochs: int, model_name: str):
     model.fit(device, train_loader, test_loader, model_dir, patience=50, n_epoch=n_epochs)
 
 
-def concept_accuracy():
+def concept_accuracy(random_seed: int):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    torch.manual_seed(random_seed)
+
     cub_dataset = CUBDataset([train_path, val_path], use_attr=True, no_img=False, uncertain_label=False,
                              image_dir=img_dir, n_class_attr=2)
     for i in range(len(cub_dataset.attribute_map)):
+        X, y =generate_cub_concept_dataset(i, 200, random_seed, [train_path, val_path], False, False, image_dir=img_dir)
         print(cub_dataset.concept_name(i))
-
+        print(X.shape)
+        print(y.shape)
 
 
 if __name__ == '__main__':
@@ -49,4 +54,4 @@ if __name__ == '__main__':
         fit_model(args.batch_size, args.n_epochs, model_name=model_name)
 
     if args.name == "concept_accuracy":
-        concept_accuracy()
+        concept_accuracy(args.seeds[0])

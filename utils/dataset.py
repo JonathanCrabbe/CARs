@@ -37,14 +37,14 @@ class ECGDataset(Dataset, ABC):
             os.makedirs(data_dir)
             self.download()
         # Read CSV; extract features and labels
-        file_path = data_dir/"mitbih_train.csv" if train else data_dir/"mitbih_test.csv"
+        file_path = data_dir / "mitbih_train.csv" if train else data_dir / "mitbih_test.csv"
         df = pd.read_csv(file_path)
         X = df.iloc[:, :187].values
         y = df.iloc[:, 187].values
         if balance_dataset:
             n_normal = np.count_nonzero(y == 0)
-            balancing_dic = {0: n_normal, 1: int(n_normal/4), 2: int(n_normal/4),
-                             3: int(n_normal/4), 4: int(n_normal/4)}
+            balancing_dic = {0: n_normal, 1: int(n_normal / 4), 2: int(n_normal / 4),
+                             3: int(n_normal / 4), 4: int(n_normal / 4)}
             smote = SMOTE(random_state=random_seed, sampling_strategy=balancing_dic)
             X, y = smote.fit_resample(X, y)
         if binarize_label:
@@ -114,8 +114,8 @@ class CUBDataset(Dataset):
         try:
             idx = img_path.split('/').index('CUB_200_2011')
             if self.image_dir != 'images':
-                img_path = '/'.join([self.image_dir] + img_path.split('/')[idx+1:])
-                #img_path = img_path.replace('images/', '')
+                img_path = '/'.join([self.image_dir] + img_path.split('/')[idx + 1:])
+                # img_path = img_path.replace('images/', '')
             else:
                 img_path = '/'.join(img_path.split('/')[idx:])
             img = Image.open(img_path).convert('RGB')
@@ -169,15 +169,30 @@ class CUBDataset(Dataset):
         Returns:
             String corresponding to the concept name
         """
-        attributes_path = Path(self.image_dir)/"attributes/attributes.txt"
+        attributes_path = Path(self.image_dir) / "attributes/attributes.txt"
         full_name = linecache.getline(str(attributes_path), self.attribute_map[concept_id])
         full_name = full_name.split(" ")[1]  # Remove the line number
         concept_name, concept_value = full_name.split("::")
-        concept_value = concept_value[:-1] # Remove the breakline character
+        concept_value = concept_value[:-1]  # Remove the breakline character
         concept_value = concept_value.replace("_", " ")  # Put spacing in concept values
         concept_name = concept_name[4:]  # Remove the "has_" characters
         concept_name = concept_name.replace("_", " ")  # Put spacing in concept names
-        return f"{concept_value} {concept_name}".title()
+        return f"{concept_name} {concept_value}".title()
+
+    def concept_example_ids(self, concept_id) -> list:
+        """
+        Get the dataset indices of the examples that exhibit a concept
+        Args:
+            concep_id: integer identifying the concept
+
+        Returns:
+            List of all the examples indices that have the concept
+        """
+        example_ids = []
+        for idx, data_dic in enumerate(self.data):
+            if data_dic["attribute_label"][concept_id] == 1:
+                example_ids.append(idx)
+        return example_ids
 
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
@@ -230,27 +245,27 @@ def load_cub_data(pkl_paths, use_attr, no_img, batch_size, uncertain_label=False
     Loads data with transformations applied, and upsample the minority class if there is class imbalance and weighted loss is not used
     NOTE: resampling is customized for first attribute only, so change sampler.py if necessary
     """
-    resized_resol = int(resol * 256/224)
+    resized_resol = int(resol * 256 / 224)
     is_training = any(['train.pkl' in f for f in pkl_paths])
     if is_training:
         transform = transforms.Compose([
-            #transforms.Resize((resized_resol, resized_resol)),
-            #transforms.RandomSizedCrop(resol),
-            transforms.ColorJitter(brightness=32/255, saturation=(0.5, 1.5)),
+            # transforms.Resize((resized_resol, resized_resol)),
+            # transforms.RandomSizedCrop(resol),
+            transforms.ColorJitter(brightness=32 / 255, saturation=(0.5, 1.5)),
             transforms.RandomResizedCrop(resol),
             transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(), #implicitly divides by 255
-            #transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
-            transforms.Normalize(mean = [ 0.485, 0.456, 0.406 ], std = [ 0.229, 0.224, 0.225 ]),
-            ])
+            transforms.ToTensor(),  # implicitly divides by 255
+            # transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
     else:
         transform = transforms.Compose([
-            #transforms.Resize((resized_resol, resized_resol)),
+            # transforms.Resize((resized_resol, resized_resol)),
             transforms.CenterCrop(resol),
-            transforms.ToTensor(), #implicitly divides by 255
-            #transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
-            transforms.Normalize(mean = [ 0.485, 0.456, 0.406 ], std = [ 0.229, 0.224, 0.225 ]),
-            ])
+            transforms.ToTensor(),  # implicitly divides by 255
+            # transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
 
     dataset = CUBDataset(pkl_paths, use_attr, no_img, uncertain_label, image_dir, n_class_attr, transform)
     if is_training:
@@ -265,6 +280,7 @@ def load_cub_data(pkl_paths, use_attr, no_img, batch_size, uncertain_label=False
     else:
         loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last)
     return loader
+
 
 def generate_mnist_concept_dataset(concept_classes: list[int], data_dir: Path, train: bool, subset_size: int,
                                    random_seed: int) -> tuple:
@@ -289,7 +305,7 @@ def generate_mnist_concept_dataset(concept_classes: list[int], data_dir: Path, t
         if target in concept_classes:
             mask[idx] = 1
     positive_idx = torch.nonzero(mask).flatten()
-    negative_idx = torch.nonzero(1-mask).flatten()
+    negative_idx = torch.nonzero(1 - mask).flatten()
     positive_loader = torch.utils.data.DataLoader(dataset, batch_size=subset_size,
                                                   sampler=SubsetRandomSampler(positive_idx))
     negative_loader = torch.utils.data.DataLoader(dataset, batch_size=subset_size,
@@ -335,6 +351,40 @@ def generate_ecg_concept_dataset(concept_class: int, data_dir: Path, train: bool
     return X[rand_perm], y[rand_perm]
 
 
+def generate_cub_concept_dataset(concept_id: int, subset_size: int, random_seed: int,
+                                 pkl_paths, use_attr, no_img, uncertain_label=False,
+                                 n_class_attr=2, image_dir='images', resol=299
+                                 ) -> tuple:
+    """
+    Return a concept dataset with positive/negatives for CUB
+    Args:
+        concept_id: concept integer identifier
+        random_seed: random seed for reproducibility
+        subset_size: size of the positive and negative subset
 
 
+    Returns:
+        a concept dataset of the form X (features),y (concept labels)
+    """
+    resized_resol = int(resol * 256 / 224)
+    transform = transforms.Compose([
+        transforms.Resize((resized_resol, resized_resol)),
+        # transforms.CenterCrop(resol),
+        transforms.ToTensor(),  # implicitly divides by 255
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
 
+    dataset = CUBDataset(pkl_paths, use_attr, no_img, uncertain_label, image_dir, n_class_attr, transform)
+    positive_idx = dataset.concept_example_ids(concept_id)
+    negative_idx = [k for k in range(len(dataset)) if k not in positive_idx]
+    positive_loader = torch.utils.data.DataLoader(dataset, batch_size=subset_size,
+                                                  sampler=SubsetRandomSampler(positive_idx))
+    negative_loader = torch.utils.data.DataLoader(dataset, batch_size=subset_size,
+                                                  sampler=SubsetRandomSampler(negative_idx))
+    positive_images, positive_labels = next(iter(positive_loader))
+    negative_images, negative_labels = next(iter(negative_loader))
+    X = np.concatenate((positive_images.cpu().numpy(), negative_images.cpu().numpy()), 0)
+    y = np.concatenate((np.ones(subset_size), np.zeros(subset_size)), 0)
+    np.random.seed(random_seed)
+    rand_perm = np.random.permutation(len(X))
+    return X[rand_perm], y[rand_perm]
