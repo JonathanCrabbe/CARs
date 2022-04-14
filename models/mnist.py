@@ -5,6 +5,7 @@ import pathlib
 import json
 import numpy as np
 from tqdm import tqdm
+from utils.metrics import AverageMeter
 
 
 class ClassifierMnist(nn.Module):
@@ -76,7 +77,9 @@ class ClassifierMnist(nn.Module):
         """
         self.train()
         train_loss = []
-        for image_batch, label_batch in tqdm(dataloader, unit="batch", leave=False):
+        loss_meter = AverageMeter("Loss")
+        train_bar = tqdm(dataloader, unit="batch", leave=False)
+        for image_batch, label_batch in train_bar:
             image_batch = image_batch.to(device)
             label_batch = label_batch.to(device)
             pred_batch = self.forward(image_batch)
@@ -84,6 +87,8 @@ class ClassifierMnist(nn.Module):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            loss_meter.update(loss.item(), len(image_batch))
+            train_bar.set_description(f"Training Loss {loss_meter.avg:.3g}")
             train_loss.append(loss.detach().cpu().numpy())
         return np.mean(train_loss)
 

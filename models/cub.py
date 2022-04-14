@@ -18,6 +18,12 @@ class CUBClassifier(nn.Module):
         self.name = name
 
     def forward(self, x):
+        x = self.input_to_representation(x)
+        x = self.fc(x)
+        # N x 200
+        return x
+
+    def input_to_representation(self, x):
         # N x 3 x 299 x 299
         x = self.inception.Conv2d_1a_3x3(x)
         # N x 32 x 149 x 149
@@ -67,15 +73,10 @@ class CUBClassifier(nn.Module):
         # N x 2048 x 1 x 1
         x = torch.flatten(x, 1)
         # N x 2048
-        x = self.fc(x)
-        # N x 200
-        return x
-
-    def input_to_representation(self, x):
         return x
 
     def representation_to_output(self, h):
-        return h
+        return self.fc(h)
 
     def train_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader,
                     optimizer: torch.optim.Optimizer) -> np.ndarray:
@@ -106,7 +107,6 @@ class CUBClassifier(nn.Module):
             train_loss.append(loss.detach().cpu().numpy())
         return np.mean(train_loss)
 
-
     def test_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader) -> tuple:
         """
         One epoch of the testing loop
@@ -133,10 +133,9 @@ class CUBClassifier(nn.Module):
 
         return np.mean(test_loss), np.mean(test_acc)
 
-
     def fit(self, device: torch.device, train_loader: torch.utils.data.DataLoader,
             test_loader: torch.utils.data.DataLoader, save_dir: pathlib.Path,
-            lr: int = 1e-03, n_epoch: int = 50, patience: int = 10, checkpoint_interval: int = -1) -> None:
+            lr: int = 1e-03, n_epoch: int = 50, patience: int = 50, checkpoint_interval: int = -1) -> None:
         """
         Fit the classifier on the training set
         Args:
@@ -196,4 +195,8 @@ class CUBClassifier(nn.Module):
         torch.save(self.state_dict(), path_to_model)
 
     def get_hooked_modules(self) -> dict[str, nn.Module]:
-        return {"Conv1": self.maxpool1, "Conv2": self.maxpool2, "Lin1": self.fc1, "Lin2": self.fc2}
+        return {
+            "Mixed5b": self.inception.Mixed_5b, "Mixed5c": self.inception.Mixed_5c, "Mixed5d": self.inception.Mixed_5d,
+            "Mixed6b": self.inception.Mixed_6b, "Mixed6c": self.inception.Mixed_6c, "Mixed6d": self.inception.Mixed_6d,
+            "Mixed7b": self.inception.Mixed_7b, "Mixed7c": self.inception.Mixed_7c, "InceptionOut": self.inception.avgpool
+               }
