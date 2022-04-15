@@ -196,7 +196,6 @@ class CUBClassifier(nn.Module):
 
     def get_hooked_modules(self) -> dict[str, nn.Module]:
         return {
-            "Mixed5b": self.inception.Mixed_5b, "Mixed5c": self.inception.Mixed_5c, "Mixed5d": self.inception.Mixed_5d,
-            "Mixed6b": self.inception.Mixed_6b, "Mixed6c": self.inception.Mixed_6c, "Mixed6d": self.inception.Mixed_6d,
-            "Mixed7b": self.inception.Mixed_7b, "Mixed7c": self.inception.Mixed_7c, "InceptionOut": self.inception.avgpool
+            "Mixed5d": self.inception.Mixed_5d, "Mixed6e": self.inception.Mixed_6e,
+            "Mixed7c": self.inception.Mixed_7c, "InceptionOut": self.inception.avgpool
                }

@@ -194,6 +194,14 @@ class CUBDataset(Dataset):
                 example_ids.append(idx)
         return example_ids
 
+    def get_concept_names(self):
+        """
+        Get the name of all concepts
+        Returns:
+            List of all concept names
+        """
+        return [self.concept_name(i) for i in range(len(self.attribute_map))]
+
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
     """Samples elements randomly from a given list of indices for imbalanced dataset
