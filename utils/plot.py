@@ -1,4 +1,6 @@
 import itertools
+import os
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -9,6 +11,7 @@ import textwrap
 import numpy as np
 from pathlib import Path
 from utils.metrics import correlation_matrix
+from utils.dataset import CUBDataset
 
 
 def plot_concept_accuracy(results_dir: Path, concept: str, dataset_name: str) -> None:
@@ -28,7 +31,7 @@ def plot_concept_accuracy(results_dir: Path, concept: str, dataset_name: str) ->
     plt.close()
 
 
-def plot_global_explanation(results_dir: Path, dataset_name: str) -> None:
+def plot_global_explanation(results_dir: Path, dataset_name: str, concept_categories: dict = None) -> None:
     sns.set(font_scale=1.2)
     sns.color_palette("colorblind")
     sns.set_style("white")
@@ -42,14 +45,33 @@ def plot_global_explanation(results_dir: Path, dataset_name: str) -> None:
         score = np.sum(attr)/len(attr)
         plot_data.append([method, class_idx, concept, score])
     plot_df = pd.DataFrame(plot_data, columns=["Method", "Class", "Concept", "Score"])
-    for class_idx in classes:
-        ax = sns.barplot(data=plot_df.loc[plot_df.Class == class_idx], x="Concept", y="Score", hue="Method")
-        wrap_labels(ax, 10)
-        plt.title(f"Class: {class_idx}")
-        plt.ylim(bottom=0, top=1.1)
-        plt.tight_layout()
-        plt.savefig(results_dir / f"{dataset_name}_global_class{class_idx}.pdf")
-        plt.close()
+    if concept_categories is not None:
+        for class_idx, concept_category in itertools.product(classes, concept_categories):
+            save_dir = results_dir/concept_category.lower().replace(" ", "-")
+            if not save_dir.exists():
+                os.makedirs(save_dir)
+            filtered_concepts = concept_categories[concept_category]  # Use only the concept in the given category
+            ax = sns.barplot(data=plot_df[(plot_df.Class == class_idx) & (plot_df.Concept.isin(filtered_concepts))],
+                             x="Concept", y="Score", hue="Method")
+            remove_text_from_labels(ax, f"{concept_category} ")
+            wrap_labels(ax, 10)
+            plt.title(f"Class: {class_idx}")
+            plt.xlabel(f"Concept: {concept_category}")
+            plt.ylim(bottom=0, top=1.1)
+            plt.tight_layout()
+            concept_category = concept_category.lower().replace(" ", "-")
+            class_idx = class_idx.lower().replace(" ", "-")
+            plt.savefig(save_dir / f"{dataset_name}_global_category_{concept_category}_class_{class_idx}.pdf")
+            plt.close()
+    else:
+        for class_idx in classes:
+            ax = sns.barplot(data=plot_df.loc[plot_df.Class == class_idx], x="Concept", y="Score", hue="Method")
+            wrap_labels(ax, 10)
+            plt.title(f"Class: {class_idx}")
+            plt.ylim(bottom=0, top=1.1)
+            plt.tight_layout()
+            plt.savefig(results_dir / f"{dataset_name}_global_class{class_idx}.pdf")
+            plt.close()
     tcar_scores = plot_df.loc[plot_df.Method == "TCAR"]["Score"]
     tcav_scores = plot_df.loc[plot_df.Method == "TCAV"]["Score"]
     true_scores = plot_df.loc[plot_df.Method == "True Prop."]["Score"]
@@ -238,6 +260,23 @@ def wrap_labels(ax, width, break_long_words=False, do_y: bool = False) -> None:
         ax.set_yticklabels(labels, rotation=0)
 
 
+def remove_text_from_labels(ax, removed_text: str) -> None:
+    """
+    Remove some redundant text in the labels of a figure
+    Args:
+        ax: figure axes
+        removed_text: string to be removed
+
+    Returns:
+
+    """
+    labels = []
+    for label in ax.get_xticklabels():
+        text = label.get_text()
+        labels.append(text.replace(removed_text, ""))
+    ax.set_xticklabels(labels, rotation=0)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -247,10 +286,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
     save_path = Path.cwd()/f"results/{args.dataset}/{args.name}"
     logging.info(f"Saving {args.name} plot for {args.dataset} in {str(save_path)}")
+    if args.dataset == "cub":
+        train_set = CUBDataset([str(Path.cwd()/"data/cub/CUB_processed/class_attr_data_10/train.pkl")],
+                               use_attr=True, no_img=False, uncertain_label=False, n_class_attr=2,
+                               image_dir=str(Path.cwd()/f"data/cub/CUB_200_2011"))
+        concept_categories = train_set.get_concept_categories()
+
+    else:
+        concept_categories = None
     if args.name == "concept_accuracy":
         plot_concept_accuracy(save_path, args.concept, args.dataset)
     elif args.name == "global_explanations":
-        plot_global_explanation(save_path, args.dataset)
+        plot_global_explanation(save_path, args.dataset, concept_categories=concept_categories)
     elif args.name == "feature_importance":
         plot_attribution_correlation(save_path, args.dataset)
     elif args.name == "concept_modulation":

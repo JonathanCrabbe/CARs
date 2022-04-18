@@ -5,6 +5,7 @@ import torch
 import pickle
 import numpy as np
 import linecache
+import itertools
 from PIL import Image
 from torchvision.datasets import MNIST
 from torchvision import transforms
@@ -13,6 +14,7 @@ from torch.utils.data import DataLoader, Dataset, BatchSampler
 from pathlib import Path
 from abc import ABC
 from imblearn.over_sampling import SMOTE
+
 
 """
 The code for the CUB dataset is adapted from 
@@ -160,6 +162,22 @@ class CUBDataset(Dataset):
             count += data_dic["attribute_label"][concept_id]
         return count
 
+    def class_name(self, class_id) -> str:
+        """
+        Get the name of a class
+        Args:
+            class_id: integer identifying the concept
+
+        Returns:
+            String corresponding to the concept name
+        """
+        class_path = Path(self.image_dir) / "classes.txt"
+        name = linecache.getline(str(class_path), class_id+1)
+        name = name.split(".")[1]  # Remove the line number
+        name = name.replace("_", " ")  # Put spacing in class names
+        name = name[:-1]  # Remove breakline character
+        return name.title()
+
     def concept_name(self, concept_id) -> str:
         """
         Get the name of a concept
@@ -170,7 +188,7 @@ class CUBDataset(Dataset):
             String corresponding to the concept name
         """
         attributes_path = Path(self.image_dir) / "attributes/attributes.txt"
-        full_name = linecache.getline(str(attributes_path), self.attribute_map[concept_id])
+        full_name = linecache.getline(str(attributes_path), self.attribute_map[concept_id]+1)
         full_name = full_name.split(" ")[1]  # Remove the line number
         concept_name, concept_value = full_name.split("::")
         concept_value = concept_value[:-1]  # Remove the breakline character
@@ -179,11 +197,11 @@ class CUBDataset(Dataset):
         concept_name = concept_name.replace("_", " ")  # Put spacing in concept names
         return f"{concept_name} {concept_value}".title()
 
-    def concept_example_ids(self, concept_id) -> list:
+    def concept_example_ids(self, concept_id: int) -> list:
         """
         Get the dataset indices of the examples that exhibit a concept
         Args:
-            concep_id: integer identifying the concept
+            concept_id: integer identifying the concept
 
         Returns:
             List of all the examples indices that have the concept
@@ -201,6 +219,37 @@ class CUBDataset(Dataset):
             List of all concept names
         """
         return [self.concept_name(i) for i in range(len(self.attribute_map))]
+
+    def get_class_names(self):
+        """
+        Get the name of all concepts
+        Returns:
+            List of all concept names
+        """
+        return [self.class_name(i) for i in range(self.N_CLASSES)]
+
+    def get_concept_categories(self) -> dict[str, list]:
+        """
+        Get all the groups of related concepts
+        Returns:
+            A dictionary with concept group names as keys and related concept indices as values
+        """
+        attributes_path = Path(self.image_dir) / "attributes/attributes.txt"
+        groups_dic = {}
+        prev_name = ""
+        for concept_id in range(len(self.attribute_map)):
+            line = linecache.getline(str(attributes_path), self.attribute_map[concept_id]+1)
+            line = line.split(" ")[1]  # Remove the line number
+            concept_name, concept_value = line.split("::")
+            concept_name = concept_name[4:]  # Remove the "has_" characters
+            concept_name = concept_name.replace("_", " ")  # Put spacing in concept names
+            concept_name = concept_name.title()
+            if concept_name == prev_name:
+                groups_dic[concept_name].append(self.concept_name(concept_id))
+            else:
+                groups_dic[concept_name] = [self.concept_name(concept_id)]
+                prev_name = concept_name
+        return groups_dic
 
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
