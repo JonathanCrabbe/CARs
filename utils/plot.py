@@ -117,16 +117,18 @@ def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: 
     sns.set(font_scale=1.2)
     sns.color_palette("colorblind")
     sns.set_style("white")
-    W = saliency.shape[-1]
+    if len(images.shape) == 4:
+        images = images.permute((0, 2, 3, 1))
     n_plots = len(plot_indices)
     fig, axs = plt.subplots(ncols=1, nrows=n_plots, figsize=(1.5, 1.5*n_plots))
     for ax_id, example_id in enumerate(plot_indices):
         sub_saliency = saliency[example_id]
         max_value = np.max(np.abs(sub_saliency))
         ax = axs[ax_id]
+
         ax.imshow(images[example_id].cpu().numpy(), cmap='gray', zorder=1)
         ax.axis('off')
-        sns.heatmap(np.reshape(sub_saliency, (W, W)), linewidth=0, xticklabels=False, yticklabels=False,
+        sns.heatmap(np.sum(sub_saliency, axis=0), linewidth=0, xticklabels=False, yticklabels=False,
                     ax=ax, cmap=sns.diverging_palette(10, 133, as_cmap=True), cbar=False,
                     alpha=.8, zorder=2, vmin=-max_value, vmax=max_value)
     plt.tight_layout()

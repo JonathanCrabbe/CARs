@@ -22,11 +22,23 @@ class CARFeatureImportance:
     def attribute(self, data_loader: DataLoader, **kwargs) -> np.ndarray:
         input_shape = list(data_loader.dataset[0][0].shape)
         attr = np.empty(shape=[0]+input_shape)
+        baselines = kwargs['baselines']
         for input_features, _ in tqdm(data_loader, unit="batch", leave=False):
             input_features = input_features.to(self.device)
-            attr = np.append(attr,
-                             self.attribution_method.attribute(input_features, **kwargs).detach().cpu().numpy(),
-                             axis=0)
+            if isinstance(baselines, torch.Tensor):
+                attr = np.append(attr,
+                                 self.attribution_method.attribute(input_features, **kwargs).detach().cpu().numpy(),
+                                 axis=0)
+            elif isinstance(baselines, torch.nn.Module):
+                batch_size = kwargs['batch_size']
+                attr = np.append(attr,
+                                 self.attribution_method.attribute(input_features,
+                                                                   baselines=baselines(input_features),
+                                                                   internal_batch_size=batch_size)
+                                 .detach().cpu().numpy(),
+                                 axis=0)
+            else:
+                raise ValueError("Invalid baseline type")
         return attr
 
 
@@ -49,12 +61,24 @@ class VanillaFeatureImportance:
     def attribute(self, data_loader: DataLoader, **kwargs) -> np.ndarray:
         input_shape = list(data_loader.dataset[0][0].shape)
         attr = np.empty(shape=[0]+input_shape)
+        baselines = kwargs["baselines"]
         for input_features, targets in tqdm(data_loader, unit="batch", leave=False):
             targets = targets.to(self.device)
             input_features = input_features.to(self.device)
-            attr = np.append(attr,
-                             self.attribution_method.attribute(input_features, target=targets, **kwargs)
-                             .detach().cpu().numpy(), axis=0)
+            if isinstance(baselines, torch.Tensor):
+                attr = np.append(attr,
+                                 self.attribution_method.attribute(input_features, target=targets,
+                                                                   **kwargs).detach().cpu().numpy(),
+                                 axis=0)
+            elif isinstance(baselines, torch.nn.Module):
+                batch_size = kwargs['batch_size']
+                attr = np.append(attr,
+                                 self.attribution_method.attribute(input_features, target=targets,
+                                                                   baselines=baselines(input_features),
+                                                                   internal_batch_size=batch_size
+                                                                   ).detach().cpu().numpy(),
+
+                                 axis=0)
         return attr
 
 

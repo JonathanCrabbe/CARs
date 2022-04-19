@@ -4,9 +4,12 @@ import logging
 import argparse
 import pandas as pd
 import numpy as np
+import torchvision.transforms
+
 from explanations.concept import CAR, CAV
+from explanations.feature import CARFeatureImportance, VanillaFeatureImportance
 from tqdm import tqdm
-from utils.plot import plot_concept_accuracy, plot_global_explanation
+from utils.plot import plot_concept_accuracy, plot_global_explanation, plot_attribution_correlation, plot_saliency_map
 from sklearn.metrics import accuracy_score
 from pathlib import Path
 from utils.dataset import load_cub_data, CUBDataset, generate_cub_concept_dataset
@@ -185,9 +188,7 @@ def global_explanations(random_seed: int, batch_size: int, plot: bool,
                                                         False, False, image_dir=img_dir)
         H_train = []
         for x_train in np.array_split(X_train, batch_size):
-            H_train.append(
-                model.input_to_representation(torch.from_numpy(x_train).to(device)).detach().cpu().numpy()
-            )
+            H_train.append(model.input_to_representation(torch.from_numpy(x_train).to(device)).detach().cpu().numpy())
         H_train = np.concatenate(H_train)
         car_classifier.fit(H_train, y_train)
         cav_classifier.fit(H_train, y_train)
@@ -214,6 +215,68 @@ def global_explanations(random_seed: int, batch_size: int, plot: bool,
         plot_global_explanation(save_dir, "cub", concept_categories)
 
 
+def feature_importance(random_seed: int, batch_size: int, plot: bool,
+                       save_dir: Path = Path.cwd()/"results/cub/feature_importance",
+                       model_dir: Path = Path.cwd() / f"results/cub",
+                       model_name: str = "model") -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    torch.manual_seed(random_seed)
+
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+
+    # Load model
+    model_dir = model_dir/model_name
+    model = CUBClassifier(model_name)
+    model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
+    model.to(device)
+    model.eval()
+
+    # Load dataset
+    train_set = CUBDataset([train_path, val_path], use_attr=True, no_img=False, uncertain_label=False,
+                           image_dir=img_dir, n_class_attr=2)
+    class_names = train_set.get_class_names()
+    concept_names = train_set.get_concept_names()
+    concept_categories = train_set.get_concept_categories()
+
+    # Fit a concept classifier and compute feature importance for each concept
+    car_classifiers = [CAR(device) for _ in concept_names]
+    test_loader = load_cub_data([test_path], False, False, batch_size, image_dir=img_dir)
+    attribution_dic = {}
+    baselines = torchvision.transforms.GaussianBlur(kernel_size=5, sigma=1.0)
+    for concept_id, (concept_name, car) in enumerate(zip(concept_names, car_classifiers)):
+        logging.info(f"Now fitting CAR classifier for {concept_name}")
+        X_train, y_train = generate_cub_concept_dataset(concept_id, 100, random_seed, [train_path, val_path],
+                                                        False, False, image_dir=img_dir)
+        H_train = []
+        for x_train in np.array_split(X_train, batch_size):
+            H_train.append(model.input_to_representation(torch.from_numpy(x_train).to(device)).detach().cpu().numpy())
+        H_train = np.concatenate(H_train)
+        car.fit(H_train, y_train)
+        logging.info(f"Now computing feature importance on the test set for {concept_name}")
+        concept_attribution_method = CARFeatureImportance("Integrated Gradient", car, model, device)
+        attribution_dic[concept_name] = concept_attribution_method.attribute(test_loader, baselines=baselines,
+                                                                             batch_size=batch_size)
+        if plot:
+            logging.info(f"Saving plots in {save_dir} for {concept_name}")
+            X_test, _ = next(iter(test_loader))
+            for set_id in range(1, 5):
+                plot_saliency_map(X_test, attribution_dic[concept_name], list(range(set_id*10, (set_id+1)*10)),
+                                  save_dir, f"cub_set{set_id}", concept_name)
+    logging.info(f"Now computing vanilla feature importance")
+    vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
+    attribution_dic["Vanilla"] = vanilla_attribution_method.attribute(test_loader, baselines=baselines,
+                                                                      batch_size=batch_size)
+    np.savez(save_dir/'attributions.npz', **attribution_dic)
+    if plot:
+        logging.info(f"Saving plots in {save_dir}")
+        plot_attribution_correlation(save_dir, "cub")
+        X_test, _ = next(iter(test_loader))
+        for set_id in range(1, 5):
+            plot_saliency_map(X_test, attribution_dic["Vanilla"], list(range(set_id*10, (set_id+1)*10)),
+                              save_dir, f"cub_set{set_id}", "Vanilla")
+
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -229,10 +292,11 @@ if __name__ == '__main__':
     model_name = f"inception_model"
     if args.train:
         fit_model(args.batch_size, args.n_epochs, model_name=model_name)
-
     if args.name == "concept_accuracy":
         concept_accuracy(args.seeds, args.plot, args.batch_size, model_name=model_name)
     elif args.name == "statistical_significance":
         statistical_significance(args.seeds[0], args.batch_size, model_name=model_name)
     elif args.name == "global_explanations":
         global_explanations(args.seeds[0], args.batch_size, args.plot, model_name=model_name)
+    elif args.name == "feature_importance":
+        feature_importance(args.seeds[0], args.batch_size, args.plot, model_name=model_name)
