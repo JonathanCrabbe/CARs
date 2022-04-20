@@ -96,41 +96,67 @@ def plot_perturbation_sensitivity(results_dir: Path, concept: str, dataset_name:
     plt.close()
 
 
-def plot_attribution_correlation(results_dir: Path, dataset_name: str) \
-        -> None:
+def plot_attribution_correlation(results_dir: Path, dataset_name: str, filtered_concepts: list = None,
+                                 show_ticks: bool = True) -> None:
     sns.set(font_scale=.8)
     sns.color_palette("colorblind")
     sns.set_style("white")
     attribution_dic = np.load(results_dir/"attributions.npz")
+    if filtered_concepts is not None:
+        attribution_dic = {concept_name: attribution_dic[concept_name] for concept_name in filtered_concepts}
     corr_matrix = correlation_matrix(attribution_dic)
+    if show_ticks:
+        ticks = attribution_dic.keys()
+    else:
+        ticks = []
     ax = sns.heatmap(corr_matrix, vmin=-1, vmax=1, cmap=sns.diverging_palette(10, 133, as_cmap=True), cbar=True,
-                     xticklabels=attribution_dic.keys(), yticklabels=attribution_dic.keys(),
+                     xticklabels=ticks, yticklabels=ticks,
                      cbar_kws={'label': 'Correlation'}, annot=True)
-    wrap_labels(ax, 12, True, True)
+    if show_ticks:
+        wrap_labels(ax, 12, True, True)
     plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_attr_corr.pdf")
     plt.close()
 
 
-def plot_saliency_map(images: torch.Tensor, saliency: np.ndarray, plot_indices: list[int],
-                      results_dir: Path, dataset_name: str, concept_name: str) -> None:
+def plot_grayscale_saliency(images: torch.Tensor, saliency: np.ndarray, plot_indices: list[int],
+                            results_dir: Path, dataset_name: str, concept_name: str) -> None:
     sns.set(font_scale=1.2)
     sns.color_palette("colorblind")
     sns.set_style("white")
-    if len(images.shape) == 4:
-        images = images.permute((0, 2, 3, 1))
     n_plots = len(plot_indices)
     fig, axs = plt.subplots(ncols=1, nrows=n_plots, figsize=(1.5, 1.5*n_plots))
     for ax_id, example_id in enumerate(plot_indices):
         sub_saliency = saliency[example_id]
         max_value = np.max(np.abs(sub_saliency))
         ax = axs[ax_id]
-
         ax.imshow(images[example_id].cpu().numpy(), cmap='gray', zorder=1)
         ax.axis('off')
         sns.heatmap(np.sum(sub_saliency, axis=0), linewidth=0, xticklabels=False, yticklabels=False,
                     ax=ax, cmap=sns.diverging_palette(10, 133, as_cmap=True), cbar=False,
                     alpha=.8, zorder=2, vmin=-max_value, vmax=max_value)
+    plt.tight_layout()
+    plt.savefig(results_dir/f"{dataset_name}_{concept_name}_saliency.pdf")
+    plt.close()
+
+
+def plot_color_saliency(images: list, saliency: np.ndarray, results_dir: Path,
+                        dataset_name: str, concept_name: str) -> None:
+    sns.set(font_scale=1.2)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
+    n_plots = len(images)
+    fig, axs = plt.subplots(ncols=2, nrows=n_plots, figsize=(1.5*2, 1.5*n_plots))
+    for example_id in range(n_plots):
+        sub_saliency = saliency[example_id]
+        max_value = np.max(np.abs(sub_saliency))
+        ax = axs[example_id, 0]
+        ax.imshow(images[example_id])
+        ax.axis('off')
+        ax = axs[example_id, 1]
+        sns.heatmap(np.sum(sub_saliency, axis=0), linewidth=0, xticklabels=False, yticklabels=False,
+                    ax=ax, cmap=sns.diverging_palette(10, 133, as_cmap=True), cbar=False,
+                    vmin=-max_value, vmax=max_value)
     plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_{concept_name}_saliency.pdf")
     plt.close()

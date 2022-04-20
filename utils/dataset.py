@@ -148,6 +148,26 @@ class CUBDataset(Dataset):
         else:
             return img, class_label
 
+    def get_raw_image(self, idx: int,  resol: int = 299):
+        img_data = self.data[idx]
+        img_path = img_data['img_path']
+        # Trim unnecessary paths
+        try:
+            idx = img_path.split('/').index('CUB_200_2011')
+            if self.image_dir != 'images':
+                img_path = '/'.join([self.image_dir] + img_path.split('/')[idx + 1:])
+                # img_path = img_path.replace('images/', '')
+            else:
+                img_path = '/'.join(img_path.split('/')[idx:])
+            img = Image.open(img_path).convert('RGB')
+        except:
+            img_path_split = img_path.split('/')
+            split = 'train' if self.is_train else 'test'
+            img_path = '/'.join(img_path_split[:2] + [split] + img_path_split[2:])
+            img = Image.open(img_path).convert('RGB')
+        center_crop = transforms.CenterCrop(resol)
+        return center_crop(img)
+
     def concept_instance_count(self, concept_id) -> int:
         """
         Counts the number of time a concept appears in the dataset
@@ -197,18 +217,19 @@ class CUBDataset(Dataset):
         concept_name = concept_name.replace("_", " ")  # Put spacing in concept names
         return f"{concept_name} {concept_value}".title()
 
-    def concept_example_ids(self, concept_id: int) -> list:
+    def concept_example_ids(self, concept_id: int, positive: bool = True) -> list:
         """
         Get the dataset indices of the examples that exhibit a concept
         Args:
             concept_id: integer identifying the concept
+            positive: whether to return positive examples
 
         Returns:
             List of all the examples indices that have the concept
         """
         example_ids = []
         for idx, data_dic in enumerate(self.data):
-            if data_dic["attribute_label"][concept_id] == 1:
+            if data_dic["attribute_label"][concept_id] == int(positive):
                 example_ids.append(idx)
         return example_ids
 
@@ -433,7 +454,7 @@ def generate_cub_concept_dataset(concept_id: int, subset_size: int, random_seed:
 
     dataset = CUBDataset(pkl_paths, use_attr, no_img, uncertain_label, image_dir, n_class_attr, transform)
     positive_idx = dataset.concept_example_ids(concept_id)
-    negative_idx = [k for k in range(len(dataset)) if k not in positive_idx]
+    negative_idx = dataset.concept_example_ids(concept_id, False)
     positive_loader = torch.utils.data.DataLoader(dataset, batch_size=subset_size,
                                                   sampler=SubsetRandomSampler(positive_idx))
     negative_loader = torch.utils.data.DataLoader(dataset, batch_size=subset_size,

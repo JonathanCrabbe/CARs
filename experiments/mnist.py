@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torchvision import transforms
 from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
 from utils.dataset import generate_mnist_concept_dataset
-from utils.plot import (plot_concept_accuracy, plot_global_explanation, plot_saliency_map,
+from utils.plot import (plot_concept_accuracy, plot_global_explanation, plot_grayscale_saliency,
                         plot_attribution_correlation, plot_counterfactual_images, plot_modulation_impact)
 from utils.metrics import concept_impact, modulation_norm
 from explanations.concept import CAR, CAV
@@ -242,8 +242,8 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
             X_test = test_set.data
             plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)]
             for set_id in range(1, 5):
-                plot_saliency_map(X_test, attribution_dic[concept_name], plot_idx[set_id*10:(set_id+1)*10],
-                                  save_dir, f"mnist_set{set_id}", concept_name)
+                plot_grayscale_saliency(X_test, attribution_dic[concept_name], plot_idx[set_id * 10:(set_id + 1) * 10],
+                                        save_dir, f"mnist_set{set_id}", concept_name)
     logging.info(f"Now computing vanilla feature importance")
     vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
     attribution_dic["Vanilla"] = vanilla_attribution_method.attribute(test_loader, baselines=baselines)
@@ -254,8 +254,8 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         X_test = test_set.data
         plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)]
         for set_id in range(1, 5):
-            plot_saliency_map(X_test, attribution_dic["Vanilla"], plot_idx[set_id * 10:(set_id + 1) * 10],
-                              save_dir, f"mnist_set{set_id}", "Vanilla")
+            plot_grayscale_saliency(X_test, attribution_dic["Vanilla"], plot_idx[set_id * 10:(set_id + 1) * 10],
+                                    save_dir, f"mnist_set{set_id}", "Vanilla")
 
 
 def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot: bool,

@@ -9,7 +9,7 @@ import torchvision.transforms
 from explanations.concept import CAR, CAV
 from explanations.feature import CARFeatureImportance, VanillaFeatureImportance
 from tqdm import tqdm
-from utils.plot import plot_concept_accuracy, plot_global_explanation, plot_attribution_correlation, plot_saliency_map
+from utils.plot import plot_concept_accuracy, plot_global_explanation, plot_attribution_correlation, plot_color_saliency
 from sklearn.metrics import accuracy_score
 from pathlib import Path
 from utils.dataset import load_cub_data, CUBDataset, generate_cub_concept_dataset
@@ -38,7 +38,6 @@ def concept_accuracy(random_seeds: list[int], plot: bool, batch_size: int,
                      model_dir: Path = Path.cwd() / f"results/cub/", model_name: str = "model"):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     torch.manual_seed(random_seeds[0])
-
     representation_dir = save_dir / f"{model_name}_representations"
     if not representation_dir.exists():
         os.makedirs(representation_dir)
@@ -158,7 +157,6 @@ def global_explanations(random_seed: int, batch_size: int, plot: bool,
                         model_name: str = "model") -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     torch.manual_seed(random_seed)
-
     if not save_dir.exists():
         os.makedirs(save_dir)
 
@@ -221,7 +219,6 @@ def feature_importance(random_seed: int, batch_size: int, plot: bool,
                        model_name: str = "model") -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     torch.manual_seed(random_seed)
-
     if not save_dir.exists():
         os.makedirs(save_dir)
 
@@ -241,10 +238,17 @@ def feature_importance(random_seed: int, batch_size: int, plot: bool,
 
     # Fit a concept classifier and compute feature importance for each concept
     car_classifiers = [CAR(device) for _ in concept_names]
+    test_set = CUBDataset([test_path], use_attr=True, no_img=False, uncertain_label=False,
+                          image_dir=img_dir, n_class_attr=2)
     test_loader = load_cub_data([test_path], False, False, batch_size, image_dir=img_dir)
     attribution_dic = {}
-    baselines = torchvision.transforms.GaussianBlur(kernel_size=5, sigma=1.0)
+    baselines = torchvision.transforms.GaussianBlur(kernel_size=31, sigma=1.0)  # Baseline for attribution methods
+    #baselines = torch.zeros((1, 1, 299, 299)).to(device)
+    plot_images_ids = list(range(1, 5))
+
     for concept_id, (concept_name, car) in enumerate(zip(concept_names, car_classifiers)):
+        if concept_id == 5:
+            break
         logging.info(f"Now fitting CAR classifier for {concept_name}")
         X_train, y_train = generate_cub_concept_dataset(concept_id, 100, random_seed, [train_path, val_path],
                                                         False, False, image_dir=img_dir)
@@ -256,25 +260,22 @@ def feature_importance(random_seed: int, batch_size: int, plot: bool,
         logging.info(f"Now computing feature importance on the test set for {concept_name}")
         concept_attribution_method = CARFeatureImportance("Integrated Gradient", car, model, device)
         attribution_dic[concept_name] = concept_attribution_method.attribute(test_loader, baselines=baselines,
-                                                                             batch_size=batch_size)
+                                                                             internal_batch_size=batch_size)
         if plot:
             logging.info(f"Saving plots in {save_dir} for {concept_name}")
-            X_test, _ = next(iter(test_loader))
-            for set_id in range(1, 5):
-                plot_saliency_map(X_test, attribution_dic[concept_name], list(range(set_id*10, (set_id+1)*10)),
-                                  save_dir, f"cub_set{set_id}", concept_name)
+            positive_ids = test_set.concept_example_ids(concept_id)
+            negative_ids = test_set.concept_example_ids(concept_id, False)
+            selected_images = [test_set.get_raw_image(idx) for idx in plot_images_ids]
+            selected_saliencies = attribution_dic[concept_name][plot_images_ids]
+            plot_color_saliency(selected_images, selected_saliencies, save_dir, f"cub_set", concept_name)
     logging.info(f"Now computing vanilla feature importance")
     vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
     attribution_dic["Vanilla"] = vanilla_attribution_method.attribute(test_loader, baselines=baselines,
-                                                                      batch_size=batch_size)
+                                                                      internal_batch_size=batch_size)
     np.savez(save_dir/'attributions.npz', **attribution_dic)
     if plot:
         logging.info(f"Saving plots in {save_dir}")
-        plot_attribution_correlation(save_dir, "cub")
-        X_test, _ = next(iter(test_loader))
-        for set_id in range(1, 5):
-            plot_saliency_map(X_test, attribution_dic["Vanilla"], list(range(set_id*10, (set_id+1)*10)),
-                              save_dir, f"cub_set{set_id}", "Vanilla")
+        plot_attribution_correlation(save_dir, "cub", filtered_concepts=concept_categories["Bill Shape"], show_ticks=False)
 
 
 if __name__ == '__main__':
