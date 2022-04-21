@@ -1,6 +1,5 @@
 import itertools
 import os
-
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -113,7 +112,7 @@ def plot_attribution_correlation(results_dir: Path, dataset_name: str, filtered_
                      xticklabels=ticks, yticklabels=ticks,
                      cbar_kws={'label': 'Correlation'}, annot=True)
     if show_ticks:
-        wrap_labels(ax, 12, True, True)
+        wrap_labels(ax, 8, True, True)
     plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_attr_corr.pdf")
     plt.close()
@@ -149,14 +148,14 @@ def plot_color_saliency(images: list, saliency: np.ndarray, results_dir: Path,
     fig, axs = plt.subplots(ncols=2, nrows=n_plots, figsize=(1.5*2, 1.5*n_plots))
     for example_id in range(n_plots):
         sub_saliency = saliency[example_id]
-        max_value = np.max(np.abs(sub_saliency))
+        max = np.max(np.abs(sub_saliency))
         ax = axs[example_id, 0]
         ax.imshow(images[example_id])
         ax.axis('off')
         ax = axs[example_id, 1]
         sns.heatmap(np.sum(sub_saliency, axis=0), linewidth=0, xticklabels=False, yticklabels=False,
                     ax=ax, cmap=sns.diverging_palette(10, 133, as_cmap=True), cbar=False,
-                    vmin=-max_value, vmax=max_value)
+                    vmin=-max, vmax=max)
     plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_{concept_name}_saliency.pdf")
     plt.close()

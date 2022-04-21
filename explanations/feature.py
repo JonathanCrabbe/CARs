@@ -23,11 +23,7 @@ class CARFeatureImportance:
         input_shape = list(data_loader.dataset[0][0].shape)
         attr = np.empty(shape=[0]+input_shape)
         baselines = kwargs['baselines']
-        count = 0
         for input_features, _ in tqdm(data_loader, unit="batch", leave=False):
-            if count == 1:
-                break
-            count += 1
             input_features = input_features.to(self.device)
             if isinstance(baselines, torch.Tensor):
                 attr = np.append(attr,
@@ -66,27 +62,20 @@ class VanillaFeatureImportance:
         input_shape = list(data_loader.dataset[0][0].shape)
         attr = np.empty(shape=[0]+input_shape)
         baselines = kwargs["baselines"]
-        count = 0
         for input_features, targets in tqdm(data_loader, unit="batch", leave=False):
-            if count == 1:
-                break
-            count += 1
             targets = targets.to(self.device)
             input_features = input_features.to(self.device)
             if isinstance(baselines, torch.Tensor):
                 attr = np.append(attr,
                                  self.attribution_method.attribute(input_features, target=targets,
-                                                                   **kwargs).detach().cpu().numpy(),
-                                 axis=0)
+                                                                   **kwargs).detach().cpu().numpy(), axis=0)
             elif isinstance(baselines, torch.nn.Module):
                 internal_batch_size = kwargs['internal_batch_size']
                 attr = np.append(attr,
                                  self.attribution_method.attribute(input_features, target=targets,
                                                                    baselines=baselines(input_features),
                                                                    internal_batch_size=internal_batch_size
-                                                                   ).detach().cpu().numpy(),
-
-                                 axis=0)
+                                                                   ).detach().cpu().numpy(), axis=0)
         return attr
 
 

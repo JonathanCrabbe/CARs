@@ -1,11 +1,15 @@
 import abc
+import logging
+
 import numpy as np
 import torch
 import torch.nn.functional as F
+import optuna
 from abc import ABC
 from sklearn.svm import SVC
 from sklearn.linear_model import SGDClassifier
 from sklearn.model_selection import permutation_test_score
+from sklearn.metrics import accuracy_score
 
 
 class ConceptExplainer(ABC):
@@ -167,6 +171,30 @@ class CAR(ConceptExplainer, ABC):
         concept_reps = torch.from_numpy(self.get_concept_reps(positive_set)).to(self.device)
         density = kernel(concept_reps, latent_reps).mean(dim=0)
         return density
+
+    def tune_kernel_width(self, concept_reps: np.ndarray, concept_labels: np.ndarray):
+        """
+        Args:
+            concept_reps: training representations
+            concept_labels: training labels
+        Tune the kernel width to achieve good training classification accuracy with a Parzen classifier
+        Returns:
+
+        """
+
+        def train_acc(trial):
+            kernel_width = trial.suggest_float("kernel_width", .1, 50)
+            self.kernel_width = kernel_width
+            density = self.concept_importance(torch.from_numpy(concept_reps)).cpu().numpy()
+            return accuracy_score((density > 0).astype(int), concept_labels)
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        study = optuna.create_study(direction="maximize")
+        study.optimize(train_acc, n_trials=1000)
+        self.kernel_width = study.best_params["kernel_width"]
+        logging.info(f"Optimal kernel width {self.kernel_width:.3g} with training accuracy {study.best_value:.2g}")
+
+
 
 
 class CAV(ConceptExplainer, ABC):

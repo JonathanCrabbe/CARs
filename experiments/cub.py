@@ -1,11 +1,12 @@
+import matplotlib.pyplot as plt
 import torch
 import os
 import logging
 import argparse
 import pandas as pd
 import numpy as np
-import torchvision.transforms
-
+import torchvision.transforms as transforms
+from torch.utils.data import  DataLoader, Subset
 from explanations.concept import CAR, CAV
 from explanations.feature import CARFeatureImportance, VanillaFeatureImportance
 from tqdm import tqdm
@@ -213,7 +214,7 @@ def global_explanations(random_seed: int, batch_size: int, plot: bool,
         plot_global_explanation(save_dir, "cub", concept_categories)
 
 
-def feature_importance(random_seed: int, batch_size: int, plot: bool,
+def feature_importance(random_seed: int, batch_size: int, plot: bool, n_plots: int = 5, sample_per_concept: int = 50,
                        save_dir: Path = Path.cwd()/"results/cub/feature_importance",
                        model_dir: Path = Path.cwd() / f"results/cub",
                        model_name: str = "model") -> None:
@@ -229,53 +230,60 @@ def feature_importance(random_seed: int, batch_size: int, plot: bool,
     model.to(device)
     model.eval()
 
-    # Load dataset
-    train_set = CUBDataset([train_path, val_path], use_attr=True, no_img=False, uncertain_label=False,
-                           image_dir=img_dir, n_class_attr=2)
-    class_names = train_set.get_class_names()
-    concept_names = train_set.get_concept_names()
-    concept_categories = train_set.get_concept_categories()
+    # Load test set
+    test_set = CUBDataset([test_path], use_attr=False, no_img=False, uncertain_label=False,
+                          image_dir=img_dir, n_class_attr=2,
+                          transform=transforms.Compose(
+                              [transforms.Resize((299, 299)),
+                               transforms.ToTensor(),
+                               transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+                          )
+
+    # Select concept for which feature importance is evaluated
+    selected_concept_names = ["Bill Shape Hooked Seabird", "Bill Shape Dagger", "Back Pattern Striped",
+                              "Back Pattern Solid", "Breast Color Black", "Breast Color White"]
+    selected_concept_ids = [test_set.concept_id(concept_name) for concept_name in selected_concept_names]
+    subtest_ids = test_set.get_concepts_subset(selected_concept_ids, sample_per_concept, random_seed)
+    subtest_set = Subset(test_set, subtest_ids)
+    subtest_loader = DataLoader(subtest_set, batch_size)
+
+    # Options for attribution methods
+    attribution_dic = {}
+    baselines = transforms.GaussianBlur(kernel_size=299, sigma=50.0)  # Baseline for attribution methods
+    #baselines = torch.zeros((1, 1, 299, 299)).to(device)
 
     # Fit a concept classifier and compute feature importance for each concept
-    car_classifiers = [CAR(device) for _ in concept_names]
-    test_set = CUBDataset([test_path], use_attr=True, no_img=False, uncertain_label=False,
-                          image_dir=img_dir, n_class_attr=2)
-    test_loader = load_cub_data([test_path], False, False, batch_size, image_dir=img_dir)
-    attribution_dic = {}
-    baselines = torchvision.transforms.GaussianBlur(kernel_size=31, sigma=1.0)  # Baseline for attribution methods
-    #baselines = torch.zeros((1, 1, 299, 299)).to(device)
-    plot_images_ids = list(range(1, 5))
-
-    for concept_id, (concept_name, car) in enumerate(zip(concept_names, car_classifiers)):
-        if concept_id == 5:
-            break
+    car_classifiers = [CAR(device) for _ in selected_concept_names]
+    for concept_number, (concept_name, car) in enumerate(zip(selected_concept_names, car_classifiers)):
         logging.info(f"Now fitting CAR classifier for {concept_name}")
-        X_train, y_train = generate_cub_concept_dataset(concept_id, 100, random_seed, [train_path, val_path],
+        concept_id = test_set.concept_id(concept_name)
+        X_train, y_train = generate_cub_concept_dataset(concept_id, 200, random_seed, [train_path, val_path],
                                                         False, False, image_dir=img_dir)
         H_train = []
         for x_train in np.array_split(X_train, batch_size):
             H_train.append(model.input_to_representation(torch.from_numpy(x_train).to(device)).detach().cpu().numpy())
         H_train = np.concatenate(H_train)
         car.fit(H_train, y_train)
+        car.tune_kernel_width(H_train, y_train)
         logging.info(f"Now computing feature importance on the test set for {concept_name}")
         concept_attribution_method = CARFeatureImportance("Integrated Gradient", car, model, device)
-        attribution_dic[concept_name] = concept_attribution_method.attribute(test_loader, baselines=baselines,
+        attribution_dic[concept_name] = concept_attribution_method.attribute(subtest_loader, baselines=baselines,
                                                                              internal_batch_size=batch_size)
         if plot:
             logging.info(f"Saving plots in {save_dir} for {concept_name}")
-            positive_ids = test_set.concept_example_ids(concept_id)
-            negative_ids = test_set.concept_example_ids(concept_id, False)
-            selected_images = [test_set.get_raw_image(idx) for idx in plot_images_ids]
-            selected_saliencies = attribution_dic[concept_name][plot_images_ids]
-            plot_color_saliency(selected_images, selected_saliencies, save_dir, f"cub_set", concept_name)
+            plot_slice = slice(2*concept_number*sample_per_concept, 2*concept_number*sample_per_concept+n_plots)
+            positive_ids = subtest_ids[plot_slice]
+            selected_images = [test_set.get_raw_image(idx) for idx in positive_ids]
+            positive_saliency = attribution_dic[concept_name][plot_slice]
+            plot_color_saliency(selected_images, positive_saliency, save_dir, f"cub_positive", concept_name.lower().replace(" ", "_"))
     logging.info(f"Now computing vanilla feature importance")
     vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
-    attribution_dic["Vanilla"] = vanilla_attribution_method.attribute(test_loader, baselines=baselines,
+    attribution_dic["Vanilla"] = vanilla_attribution_method.attribute(subtest_loader, baselines=baselines,
                                                                       internal_batch_size=batch_size)
     np.savez(save_dir/'attributions.npz', **attribution_dic)
     if plot:
         logging.info(f"Saving plots in {save_dir}")
-        plot_attribution_correlation(save_dir, "cub", filtered_concepts=concept_categories["Bill Shape"], show_ticks=False)
+        plot_attribution_correlation(save_dir, "cub")
 
 
 if __name__ == '__main__':
@@ -288,6 +296,7 @@ if __name__ == '__main__':
     parser.add_argument("--train", action='store_true')
     parser.add_argument("--plot", action='store_true')
     parser.add_argument("--concept_category", type=str, default="Primary Color")
+    parser.add_argument("--samples_per_concept", type=int, default=50)
     args = parser.parse_args()
 
     model_name = f"inception_model"
@@ -300,4 +309,5 @@ if __name__ == '__main__':
     elif args.name == "global_explanations":
         global_explanations(args.seeds[0], args.batch_size, args.plot, model_name=model_name)
     elif args.name == "feature_importance":
-        feature_importance(args.seeds[0], args.batch_size, args.plot, model_name=model_name)
+        feature_importance(args.seeds[0], args.batch_size, args.plot, model_name=model_name,
+                           sample_per_concept=args.samples_per_concept)

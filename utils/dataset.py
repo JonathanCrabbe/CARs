@@ -1,3 +1,5 @@
+import random
+
 import pandas as pd
 import os
 import logging
@@ -165,7 +167,7 @@ class CUBDataset(Dataset):
             split = 'train' if self.is_train else 'test'
             img_path = '/'.join(img_path_split[:2] + [split] + img_path_split[2:])
             img = Image.open(img_path).convert('RGB')
-        center_crop = transforms.CenterCrop(resol)
+        center_crop = transforms.Resize((resol, resol))
         return center_crop(img)
 
     def concept_instance_count(self, concept_id) -> int:
@@ -198,7 +200,7 @@ class CUBDataset(Dataset):
         name = name[:-1]  # Remove breakline character
         return name.title()
 
-    def concept_name(self, concept_id) -> str:
+    def concept_name(self, concept_id: int) -> str:
         """
         Get the name of a concept
         Args:
@@ -216,6 +218,18 @@ class CUBDataset(Dataset):
         concept_name = concept_name[4:]  # Remove the "has_" characters
         concept_name = concept_name.replace("_", " ")  # Put spacing in concept names
         return f"{concept_name} {concept_value}".title()
+
+    def concept_id(self, concept_name: str) -> int:
+        """
+        Get the integer identifying a concept
+        Args:
+            concept_name: the name identifying the concept
+
+        Returns:
+            Unique integer corresponding to the concept
+        """
+        concept_names = self.get_concept_names()
+        return concept_names.index(concept_name)
 
     def concept_example_ids(self, concept_id: int, positive: bool = True) -> list:
         """
@@ -271,6 +285,26 @@ class CUBDataset(Dataset):
                 groups_dic[concept_name] = [self.concept_name(concept_id)]
                 prev_name = concept_name
         return groups_dic
+
+    def get_concepts_subset(self, concept_ids: list[int], instance_per_concept: int, random_seed: int) -> list[int]:
+        """
+        Give a list of example indices to create balance subset with several concepts
+        Args:
+            instance_per_concept: number of examples per concept (positive & negative)
+            concept_ids: concept to consider
+            random_seed: random seed for reproducibility
+
+        Returns:
+            List of example ids that can be used for subsampling
+        """
+        example_ids = []
+        random.seed(random_seed)
+        for concept_idx in concept_ids:
+            positive_ids = random.sample(self.concept_example_ids(concept_idx), instance_per_concept)
+            example_ids += positive_ids
+            negative_ids = random.sample(self.concept_example_ids(concept_idx, False), instance_per_concept)
+            example_ids += negative_ids
+        return example_ids
 
 
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
