@@ -227,7 +227,8 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         X_train, y_train = generate_ecg_concept_dataset(concept_to_class[concept_name], data_dir,
                                                         True, 200, random_seed)
         H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
-        car.fit(H_train, y_train)
+        #car.fit(H_train, y_train)
+        car.tune_kernel_width(H_train, y_train)
         logging.info(f"Now computing feature importance on the test set for {concept_name}")
         concept_attribution_method = CARFeatureImportance("Integrated Gradient", car, model, device)
         attribution_dic[concept_name] = concept_attribution_method.attribute(test_loader, baselines=baselines)
@@ -237,7 +238,7 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
             plot_idx = [torch.nonzero(y_test_full == (n % 5))[n // 5].item() for n in range(30)]
             for set_id in range(1, 5):
                 plot_time_series_saliency(X_test, attribution_dic[concept_name], plot_idx[set_id*5:(set_id+1)*5],
-                                          save_dir, f"ecg_set{set_id}", concept_name)
+                                          save_dir, f"ecg_set{set_id}", concept_name.lower().replace(" ", "-"))
     logging.info(f"Now computing vanilla feature importance")
     vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
     attribution_dic["Vanilla"] = vanilla_attribution_method.attribute(test_loader, baselines=baselines)
@@ -249,7 +250,7 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         plot_idx = [torch.nonzero(y_test_full == (n % 5))[n // 5].item() for n in range(30)]
         for set_id in range(1, 5):
             plot_time_series_saliency(X_test, attribution_dic["Vanilla"], plot_idx[set_id * 5:(set_id + 1) * 5],
-                                      save_dir, f"ecg_set{set_id}", "Vanilla")
+                                      save_dir, f"ecg_set{set_id}", "vanilla")
 
 
 def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot: bool,

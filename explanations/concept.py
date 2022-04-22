@@ -181,7 +181,7 @@ class CAR(ConceptExplainer, ABC):
         Returns:
 
         """
-
+        super(CAR, self).fit(concept_reps, concept_labels)
         def train_acc(trial):
             kernel_width = trial.suggest_float("kernel_width", .1, 50)
             self.kernel_width = kernel_width

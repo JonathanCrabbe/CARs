@@ -20,7 +20,7 @@ from explanations.feature import CARFeatureImportance, VanillaFeatureImportance,
 from sklearn.metrics import accuracy_score
 from tqdm import tqdm
 
-concept_to_class = {"Loop": [0, 2, 6, 8, 9], "Mirror Symmetry": [0, 3,  8], "Vertical Line": [1, 4, 7],
+concept_to_class = {"Loop": [0, 2, 6, 8, 9],  "Vertical Line": [1, 4, 7],
                     "Horizontal Line": [4, 5, 7], "Curvature": [0, 2, 3, 5, 6, 8, 9]}
 
 
@@ -233,7 +233,7 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir,
                                                           True, 200, random_seed)
         H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
-        car.fit(H_train, y_train)
+        car.tune_kernel_width(H_train, y_train)
         logging.info(f"Now computing feature importance on the test set for {concept_name}")
         concept_attribution_method = CARFeatureImportance("Integrated Gradient", car, model, device)
         attribution_dic[concept_name] = concept_attribution_method.attribute(test_loader, baselines=baselines)
@@ -243,7 +243,7 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
             plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)]
             for set_id in range(1, 5):
                 plot_grayscale_saliency(X_test, attribution_dic[concept_name], plot_idx[set_id * 10:(set_id + 1) * 10],
-                                        save_dir, f"mnist_set{set_id}", concept_name)
+                                        save_dir, f"mnist_set{set_id}", concept_name.lower().replace(" ", "-"))
     logging.info(f"Now computing vanilla feature importance")
     vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
     attribution_dic["Vanilla"] = vanilla_attribution_method.attribute(test_loader, baselines=baselines)
@@ -255,7 +255,7 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)]
         for set_id in range(1, 5):
             plot_grayscale_saliency(X_test, attribution_dic["Vanilla"], plot_idx[set_id * 10:(set_id + 1) * 10],
-                                    save_dir, f"mnist_set{set_id}", "Vanilla")
+                                    save_dir, f"mnist_set{set_id}", "vanilla")
 
 
 def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot: bool,
@@ -290,6 +290,7 @@ def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot
                                                           True, 200, random_seed)
         H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
         car.fit(H_train, y_train)
+        #car.tune_kernel_width(H_train, y_train)
         cav.fit(H_train, y_train)
         car_modulator = CARModulator(car, model, device)
         cav_modulator = CAVModulator(cav, model, device)
@@ -314,7 +315,7 @@ def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot
             plot_idx = [torch.nonzero(test_set.targets == (n % 10))[n // 10].item() for n in range(100)]
             for set_id in range(1, 5):
                 plot_counterfactual_images(X_test, modulated_images, plot_idx[set_id*10:(set_id+1)*10],
-                                           save_dir, f"mnist_set{set_id}", concept_name)
+                                           save_dir, f"mnist_set{set_id}", concept_name.lower().replace(" ", "-"))
     results_df = pd.DataFrame(results_data, columns=["Concept", "Method", "Concept Shift", "Modulation Norm"])
     results_df.to_csv(save_dir / "metrics.csv")
     if plot:

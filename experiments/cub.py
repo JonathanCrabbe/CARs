@@ -240,7 +240,7 @@ def feature_importance(random_seed: int, batch_size: int, plot: bool, n_plots: i
                           )
 
     # Select concept for which feature importance is evaluated
-    selected_concept_names = ["Bill Shape Hooked Seabird", "Bill Shape Dagger", "Back Pattern Striped",
+    selected_concept_names = ["Wing Color Brown", "Wing Color Yellow", "Back Pattern Striped",
                               "Back Pattern Solid", "Breast Color Black", "Breast Color White"]
     selected_concept_ids = [test_set.concept_id(concept_name) for concept_name in selected_concept_names]
     subtest_ids = test_set.get_concepts_subset(selected_concept_ids, sample_per_concept, random_seed)
@@ -275,7 +275,7 @@ def feature_importance(random_seed: int, batch_size: int, plot: bool, n_plots: i
             positive_ids = subtest_ids[plot_slice]
             selected_images = [test_set.get_raw_image(idx) for idx in positive_ids]
             positive_saliency = attribution_dic[concept_name][plot_slice]
-            plot_color_saliency(selected_images, positive_saliency, save_dir, f"cub_positive", concept_name.lower().replace(" ", "_"))
+            plot_color_saliency(selected_images, positive_saliency, save_dir, f"cub_positive", concept_name.lower().replace(" ", "-"))
     logging.info(f"Now computing vanilla feature importance")
     vanilla_attribution_method = VanillaFeatureImportance("Integrated Gradient", model, device)
     attribution_dic["Vanilla"] = vanilla_attribution_method.attribute(subtest_loader, baselines=baselines,
