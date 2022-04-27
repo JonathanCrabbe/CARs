@@ -240,7 +240,7 @@ def feature_importance(random_seed: int, batch_size: int, plot: bool, n_plots: i
                           )
 
     # Select concept for which feature importance is evaluated
-    selected_concept_names = ["Wing Color Brown", "Wing Color Yellow", "Back Pattern Striped",
+    selected_concept_names = ["Belly Color Brown", "Belly Pattern Solid", "Back Pattern Striped",
                               "Back Pattern Solid", "Breast Color Black", "Breast Color White"]
     selected_concept_ids = [test_set.concept_id(concept_name) for concept_name in selected_concept_names]
     subtest_ids = test_set.get_concepts_subset(selected_concept_ids, sample_per_concept, random_seed)

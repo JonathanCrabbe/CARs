@@ -196,7 +196,6 @@ class CAR(ConceptExplainer, ABC):
 
 
 
-
 class CAV(ConceptExplainer, ABC):
     def __init__(self, device: torch.device, batch_size: int = 50):
         super(CAV, self).__init__(device, batch_size)
