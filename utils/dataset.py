@@ -1,5 +1,4 @@
 import random
-
 import pandas as pd
 import os
 import logging
@@ -7,7 +6,6 @@ import torch
 import pickle
 import numpy as np
 import linecache
-import itertools
 from PIL import Image
 from torchvision.datasets import MNIST
 from torchvision import transforms
@@ -16,6 +14,11 @@ from torch.utils.data import DataLoader, Dataset, BatchSampler
 from pathlib import Path
 from abc import ABC
 from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import RandomUnderSampler
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import IterativeImputer
+
 
 
 """
@@ -348,6 +351,130 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
 
     def __len__(self):
         return self.num_samples
+
+
+class SEERDataset(Dataset):
+    def __init__(self,  path_csv: str, random_seed: int, preprocess: bool = True):
+        """
+        Load the SEER dataset.
+        Args:
+            path_csv: str, path to the dataset
+            preprocess: bool, option. Perform imputation and label encoding
+        Returns:
+            X: the feature set
+            T: days to event or censoring
+            Y: Outcome or censoring
+        """
+
+        expected_columns = [
+            "Age at Diagnosis",
+            "PSA Lab Value",
+            "T Stage",
+            "Grade",
+            "AJCC Stage",
+            "Primary Gleason",
+            "Secondary Gleason",
+            "Composite Gleason",
+            "Number of Cores Positive",
+            "Number of Cores Negative",
+            "Number of Cores Examined",
+            "Censoring",
+            "Days to death or current survival status",
+            "cancer related death",
+            "any cause of  death",
+        ]
+
+        dataset = pd.read_csv(path_csv)
+        assert set(dataset.columns) == set(expected_columns), "Invalid dataset provided."
+
+        X = dataset.drop(
+            [   "Grade",
+                "Censoring",
+                "Days to death or current survival status",
+                "cancer related death",
+                "any cause of  death",
+                "Composite Gleason",
+                "Number of Cores Negative",
+                "AJCC Stage",
+            ],
+            axis=1,
+        )
+
+        rename_cols = {
+            "Age at Diagnosis": "Age at Diagnosis",
+            "PSA Lab Value": "PSA (ng/ml)",
+            "T Stage": "Clinical T stage",
+            "Grade": "Histological grade group",
+            "Number of Cores Positive": "Number of Cores Positive",
+            "Number of Cores Examined": "Number of Cores Examined",
+        }
+        X = X.rename(columns=rename_cols)
+
+        Y = dataset["cancer related death"]
+        T = dataset["Days to death or current survival status"]
+        G = dataset["Grade"]
+
+        if preprocess:
+
+            # Remove empty events
+            remove_empty = T > 0
+            X = X[remove_empty]
+            Y = Y[remove_empty]
+            T = T[remove_empty]
+
+            # One-hot encoding
+            cat_columns = ["Clinical T stage", "Primary Gleason", "Secondary Gleason"]
+            encoders = {}
+            for col in cat_columns:
+                ohe = OneHotEncoder(handle_unknown="ignore", sparse=False)
+                ohe.fit(X[[col]].values)
+
+                encoders[col] = ohe
+            def encoder(df: pd.DataFrame) -> pd.DataFrame:
+                output = df.copy()
+                for col in encoders:
+                    ohe = encoders[col]
+                    encoded = pd.DataFrame(
+                        ohe.transform(output[[col]].values),
+                        columns=ohe.get_feature_names_out([col]),
+                        index=output.index.copy(),
+                    )
+                    output = pd.concat([output, encoded], axis=1)
+                    output.drop(columns=[col], inplace=True)
+
+                return output
+            X = encoder(X)
+
+
+            # Imputation
+            imp = IterativeImputer(missing_values=np.nan)
+            X = pd.DataFrame(imp.fit_transform(X), columns=X.columns)
+            assert not X.isnull().values.any()
+
+            # Standardize continuous features
+            scaler = StandardScaler()
+            num_columns = ["Age at Diagnosis", "PSA (ng/ml)", "Number of Cores Positive", "Number of Cores Examined"]
+            X[num_columns] = scaler.fit_transform(X[num_columns])
+
+            # Under-sample a balanced dataset
+            under_sampler = RandomUnderSampler(random_state=random_seed)
+            X, Y = under_sampler.fit_resample(X, Y)
+
+            # One-hot encode concept
+            G = pd.get_dummies(G)
+
+        self.X = X
+        self.Y = Y
+        self.G = G
+
+    def __len__(self):
+        return len(self.Y)
+
+    def __getitem__(self, idx):
+        x = self.X.iloc[[idx]].values
+        x = torch.tensor(x, dtype=torch.float32).flatten()
+        y = self.Y.iloc[[idx]].values[0]
+        return x, y
 
 
 def load_cub_data(pkl_paths, use_attr, no_img, batch_size, uncertain_label=False,

@@ -11,7 +11,6 @@ import numpy as np
 from pathlib import Path
 from utils.metrics import correlation_matrix
 from utils.dataset import CUBDataset
-from sklearn.preprocessing import minmax_scale
 
 
 def plot_concept_accuracy(results_dir: Path, concept: str, dataset_name: str) -> None:
