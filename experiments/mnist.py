@@ -1,6 +1,8 @@
 import itertools
 import logging
 import argparse
+
+import matplotlib.pyplot as plt
 import torch
 import numpy as np
 import os
@@ -323,6 +325,50 @@ def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot
         plot_modulation_impact(save_dir, "mnist")
 
 
+def concept_dream(random_seed: int, latent_dim: int,  plot: bool,
+                  save_dir: Path = Path.cwd()/"results/mnist/concept_dream",
+                  data_dir: Path = Path.cwd()/"data/mnist",
+                  model_dir: Path = Path.cwd() / f"results/mnist",
+                  model_name: str = "model") -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    torch.manual_seed(random_seed)
+
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+
+    model_dir = model_dir/model_name
+    model = ClassifierMnist(latent_dim, model_name)
+    model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
+    model.to(device)
+    #model.eval()
+
+    # Fit a concept classifier and compute feature importance for each concept
+    car_classifiers = [CAR(device) for _ in concept_to_class]
+    cav_classifiers = [CAV(device) for _ in concept_to_class]
+    results_data = []
+    baseline = torch.zeros((1, 1, 28, 28))
+    for concept_name, car, cav in zip(concept_to_class, car_classifiers, cav_classifiers):
+        logging.info(f"Now fitting concept classifier for {concept_name}")
+        X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir,
+                                                          True, 200, random_seed)
+        H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
+        #car.fit(H_train, y_train)
+        car.tune_kernel_width(H_train, y_train)
+        cav.fit(H_train, y_train)
+        car_modulator = CARModulator(car, model, device)
+        cav_modulator = CAVModulator(cav, model, device)
+        logging.info(f"Now dreaming {concept_name} with CAR")
+        car_modulated_image = car_modulator.dream(baseline, 1000, car.kernel_width)
+        plt.imshow(car_modulated_image.squeeze().numpy())
+        plt.show()
+        plt.close()
+        logging.info(f"Now dreaming {concept_name} with CAV")
+        cav_modulated_image = cav_modulator.dream(baseline, 1000)
+        plt.imshow(cav_modulated_image.squeeze().numpy())
+        plt.show()
+        plt.close()
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -347,6 +393,8 @@ if __name__ == "__main__":
         feature_importance(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
     elif args.name == "concept_modulation":
         concept_modulation(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
+    elif args.name == "concept_dream":
+        concept_dream(args.seeds[0], args.latent_dim, args.plot, model_name=model_name)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 

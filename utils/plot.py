@@ -11,6 +11,7 @@ import numpy as np
 from pathlib import Path
 from utils.metrics import correlation_matrix
 from utils.dataset import CUBDataset
+from sklearn.preprocessing import minmax_scale
 
 
 def plot_concept_accuracy(results_dir: Path, concept: str, dataset_name: str) -> None:
@@ -209,17 +210,26 @@ def plot_counterfactual_images(factuals: torch.Tensor, counterfactuals: list[np.
     fig, axs = plt.subplots(ncols=n_cols, nrows=n_plots, figsize=(2*n_cols, 2*n_plots))
     for ax_id, example_id in enumerate(plot_indices):
         factual_image = factuals[example_id].cpu().numpy().astype(float)
+        if len(factual_image.shape) == 3:
+            factual_image = np.transpose(factual_image, (1, 2, 0))
+            factual_image = (factual_image - np.min(factual_image))/np.ptp(factual_image)
         ax = axs[ax_id, 0]
         ax.imshow(factual_image, cmap='gray')
         ax.axis('off')
         ax.set_title('Original')
         ax = axs[ax_id, 1]
         counterfactual_image = counterfactuals[0][example_id].squeeze()
+        if len(counterfactual_image.shape) == 3:
+            counterfactual_image = np.transpose(counterfactual_image, (1, 2, 0))
+            counterfactual_image = (counterfactual_image - np.min(counterfactual_image))/np.ptp(counterfactual_image)
         ax.imshow(counterfactual_image, cmap='gray')
         ax.axis('off')
         ax.set_title('CAR Modulated')
         ax = axs[ax_id, 2]
         counterfactual_image = counterfactuals[1][example_id].squeeze()
+        if len(counterfactual_image.shape) == 3:
+            counterfactual_image = np.transpose(counterfactual_image, (1, 2, 0))
+            counterfactual_image = (counterfactual_image - np.min(counterfactual_image)) / np.ptp(counterfactual_image)
         ax.imshow(counterfactual_image, cmap='gray')
         ax.axis('off')
         ax.set_title('CAV Modulated')

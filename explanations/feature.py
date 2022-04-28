@@ -41,7 +41,6 @@ class CARFeatureImportance:
                 raise ValueError("Invalid baseline type")
         return attr
 
-
     def concept_importance(self, input_features: torch.tensor) -> torch.Tensor:
         input_features = input_features.to(self.device)
         latent_reps = self.black_box.input_to_representation(input_features)
@@ -85,7 +84,7 @@ class CARModulator:
         self.black_box = black_box.to(device)
         self.device = device
 
-    def generate(self, data_loader: DataLoader, n_epochs: int, kernel_width: float) -> torch.Tensor:
+    def generate(self, data_loader: DataLoader, n_epochs: int, kernel_width: float, clamp: bool = True) -> torch.Tensor:
         self.concept_explainer.kernel_width = kernel_width
         input_shape = list(next(iter(data_loader))[0].shape[1:])
         generated_inputs = torch.empty(size=[0]+input_shape)
@@ -104,9 +103,24 @@ class CARModulator:
                 concept_loss = torch.sum(factual_sign*modulated_importance)
                 concept_loss.backward()
                 opt.step()
-                modulated_features.data = torch.clamp(modulated_features.data, 0, 1)
+                if clamp:
+                    modulated_features.data = torch.clamp(modulated_features.data, 0, 1)
             generated_inputs = torch.cat((generated_inputs, modulated_features.clone().detach().cpu()))
         return generated_inputs
+
+    def dream(self, baseline_features: torch.Tensor, n_epochs: int, kernel_width: float) -> torch.Tensor:
+        self.concept_explainer.kernel_width = kernel_width
+        baseline_features = baseline_features.to(self.device)
+        modulated_features = baseline_features.clone().requires_grad_(True)
+        opt = Adam([modulated_features])
+        for epoch in range(n_epochs):
+            opt.zero_grad()
+            modulated_reps = self.black_box.input_to_representation(modulated_features)
+            modulated_importance = self.concept_explainer.concept_importance(modulated_reps)
+            (-modulated_importance).backward()
+            opt.step()
+            modulated_features.data = torch.clamp(modulated_features.data, 0, 1)
+        return modulated_features.clone().detach().cpu()
 
 
 class CAVModulator:
@@ -115,7 +129,7 @@ class CAVModulator:
         self.black_box = black_box.to(device)
         self.device = device
 
-    def generate(self, data_loader: DataLoader, n_epochs: int) -> torch.Tensor:
+    def generate(self, data_loader: DataLoader, n_epochs: int, clamp: bool = True) -> torch.Tensor:
         input_shape = list(next(iter(data_loader))[0].shape[1:])
         generated_inputs = torch.empty(size=[0]+input_shape)
         cav = self.concept_explainer.get_activation_vector()
@@ -134,9 +148,24 @@ class CAVModulator:
                 concept_loss = torch.sum(factual_sign*modulated_proj)
                 concept_loss.backward()
                 opt.step()
-                modulated_features.data = torch.clamp(modulated_features.data, 0, 1)
+                if clamp:
+                    modulated_features.data = torch.clamp(modulated_features.data, 0, 1)
             generated_inputs = torch.cat((generated_inputs, modulated_features.clone().detach().cpu()))
         return generated_inputs
+
+    def dream(self, baseline_features: torch.Tensor, n_epochs: int) -> torch.Tensor:
+        baseline_features = baseline_features.to(self.device)
+        modulated_features = baseline_features.clone().requires_grad_(True)
+        opt = Adam([modulated_features])
+        cav = self.concept_explainer.get_activation_vector()
+        for epoch in range(n_epochs):
+            opt.zero_grad()
+            modulated_reps = self.black_box.input_to_representation(modulated_features)
+            modulated_proj = torch.einsum('bi,bi -> ', modulated_reps, cav)
+            (-modulated_proj).backward()
+            opt.step()
+            modulated_features.data = torch.clamp(modulated_features.data, 0, 1)
+        return modulated_features.clone().detach().cpu()
 
 
 """

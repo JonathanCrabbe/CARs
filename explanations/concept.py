@@ -195,7 +195,6 @@ class CAR(ConceptExplainer, ABC):
         logging.info(f"Optimal kernel width {self.kernel_width:.3g} with training accuracy {study.best_value:.2g}")
 
 
-
 class CAV(ConceptExplainer, ABC):
     def __init__(self, device: torch.device, batch_size: int = 50):
         super(CAV, self).__init__(device, batch_size)

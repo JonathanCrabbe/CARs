@@ -6,16 +6,18 @@ import argparse
 import pandas as pd
 import numpy as np
 import torchvision.transforms as transforms
-from torch.utils.data import  DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, TensorDataset
 from explanations.concept import CAR, CAV
-from explanations.feature import CARFeatureImportance, VanillaFeatureImportance
+from explanations.feature import CARFeatureImportance, VanillaFeatureImportance, CARModulator, CAVModulator
 from tqdm import tqdm
-from utils.plot import plot_concept_accuracy, plot_global_explanation, plot_attribution_correlation, plot_color_saliency
+from utils.plot import plot_concept_accuracy, plot_global_explanation, plot_attribution_correlation, \
+    plot_color_saliency, plot_counterfactual_images, plot_modulation_impact
 from sklearn.metrics import accuracy_score
 from pathlib import Path
 from utils.dataset import load_cub_data, CUBDataset, generate_cub_concept_dataset
 from models.cub import CUBClassifier
 from utils.hooks import register_hooks, remove_all_hooks, get_saved_representations
+from utils.metrics import concept_impact, modulation_norm
 
 train_path = str(Path.cwd()/"data/cub/CUB_processed/class_attr_data_10/train.pkl")
 val_path = str(Path.cwd()/"data/cub/CUB_processed/class_attr_data_10/val.pkl")
@@ -250,7 +252,6 @@ def feature_importance(random_seed: int, batch_size: int, plot: bool, n_plots: i
     # Options for attribution methods
     attribution_dic = {}
     baselines = transforms.GaussianBlur(kernel_size=299, sigma=50.0)  # Baseline for attribution methods
-    #baselines = torch.zeros((1, 1, 299, 299)).to(device)
 
     # Fit a concept classifier and compute feature importance for each concept
     car_classifiers = [CAR(device) for _ in selected_concept_names]
@@ -286,6 +287,88 @@ def feature_importance(random_seed: int, batch_size: int, plot: bool, n_plots: i
         plot_attribution_correlation(save_dir, "cub")
 
 
+def concept_modulation(random_seed: int, batch_size: int,  plot: bool, sample_per_concept: int = 50, n_plots: int = 5,
+                       save_dir: Path = Path.cwd()/"results/cub/concept_modulation",
+                       model_dir: Path = Path.cwd() / f"results/cub",
+                       model_name: str = "model") -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    torch.manual_seed(random_seed)
+
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+
+    model_dir = model_dir/model_name
+    model = CUBClassifier(model_name)
+    model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
+    model.to(device)
+    model.eval()
+
+    # Load test set
+    test_set = CUBDataset([test_path], use_attr=False, no_img=False, uncertain_label=False,
+                          image_dir=img_dir, n_class_attr=2,
+                          transform=transforms.Compose(
+                              [transforms.Resize((299, 299)),
+                               transforms.ToTensor(),
+                               transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+                          )
+
+    # Select concept for which feature importance is evaluated
+    selected_concept_names = ["Belly Color Brown", "Belly Pattern Solid", "Back Pattern Striped",
+                              "Back Pattern Solid", "Breast Color Black", "Breast Color White"]
+
+    # Fit a concept classifier and compute feature importance for each concept
+    car_classifiers = [CAR(device) for _ in selected_concept_names]
+    cav_classifiers = [CAV(device) for _ in selected_concept_names]
+    results_data = []
+
+    for concept_name, car, cav in zip(selected_concept_names, car_classifiers, cav_classifiers):
+        logging.info(f"Now fitting concept classifier for {concept_name}")
+        concept_id = test_set.concept_id(concept_name)
+        X_train, y_train = generate_cub_concept_dataset(concept_id, 200, random_seed, [train_path, val_path],
+                                                        False, False, image_dir=img_dir)
+        H_train = []
+        for x_train in np.array_split(X_train, batch_size):
+            H_train.append(model.input_to_representation(torch.from_numpy(x_train).to(device)).detach().cpu().numpy())
+        H_train = np.concatenate(H_train)
+        car.fit(H_train, y_train)
+        cav.fit(H_train, y_train)
+        # Create a test set of images to modulate
+        subtest_ids = test_set.get_concepts_subset([concept_id], sample_per_concept, random_seed)
+        subtest_set = Subset(test_set, subtest_ids)
+        subtest_loader = DataLoader(subtest_set, batch_size)
+        # Modulate the test examples
+        car_modulator = CARModulator(car, model, device)
+        cav_modulator = CAVModulator(cav, model, device)
+        logging.info(f"Now modulating the test set for {concept_name} with CAR")
+        car_modulated_images = car_modulator.generate(subtest_loader, 100, 1, clamp=False)
+        logging.info(f"Now modulating the test set for {concept_name} with CAV")
+        cav_modulated_images = cav_modulator.generate(subtest_loader, 100, clamp=False)
+        car_modulated_loader = DataLoader(TensorDataset(car_modulated_images), batch_size, shuffle=False)
+        cav_modulated_loader = DataLoader(TensorDataset(cav_modulated_images), batch_size, shuffle=False)
+        car_impacts = concept_impact(subtest_loader, car_modulated_loader, model, car, device)
+        cav_impacts = concept_impact(subtest_loader, cav_modulated_loader, model, car, device)
+        car_distances = modulation_norm(subtest_loader, car_modulated_loader, device)
+        cav_distances = modulation_norm(subtest_loader, cav_modulated_loader, device)
+        results_data += [[concept_name, "CAR", car_impact, car_distance]
+                         for car_impact, car_distance in zip(car_impacts, car_distances)]
+        results_data += [[concept_name, "CAV", cav_impact, cav_distance]
+                         for cav_impact, cav_distance in zip(cav_impacts, cav_distances)]
+        if plot:
+            modulated_images = [car_modulated_images.numpy(), cav_modulated_images.numpy()]
+            logging.info(f"Saving plots in {save_dir} for {concept_name}")
+            original_images = torch.cat([image_batch for image_batch, _ in subtest_loader])
+            plot_counterfactual_images(original_images, modulated_images, list(range(n_plots)),
+                                       save_dir, f"cub_positive", concept_name.lower().replace(" ", "-"))
+            plot_counterfactual_images(original_images, modulated_images, list(range(sample_per_concept, sample_per_concept+n_plots)),
+                                       save_dir, f"cub_negative", concept_name.lower().replace(" ", "-"))
+
+    results_df = pd.DataFrame(results_data, columns=["Concept", "Method", "Concept Shift", "Modulation Norm"])
+    results_df.to_csv(save_dir / "metrics.csv")
+    if plot:
+        logging.info(f"Saving plots in {save_dir}")
+        plot_modulation_impact(save_dir, "cub")
+
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -310,4 +393,7 @@ if __name__ == '__main__':
         global_explanations(args.seeds[0], args.batch_size, args.plot, model_name=model_name)
     elif args.name == "feature_importance":
         feature_importance(args.seeds[0], args.batch_size, args.plot, model_name=model_name,
+                           sample_per_concept=args.samples_per_concept)
+    elif args.name == "concept_modulation":
+        concept_modulation(args.seeds[0], args.batch_size, args.plot, model_name=model_name,
                            sample_per_concept=args.samples_per_concept)
