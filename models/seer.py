@@ -17,7 +17,7 @@ class SEERClassifier(nn.Module):
         self.out = nn.Linear(self.latent_dim, 2)
         self.checkpoints_files = []
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(p=0.5)
+        self.dropout = nn.Dropout(p=0.3)
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, x):
@@ -35,11 +35,11 @@ class SEERClassifier(nn.Module):
         x = self.relu(x)
         x = self.dropout(x)
         x = self.fc2(x)
-        x = self.relu(x)
-        x = self.dropout(x)
         return x
 
     def representation_to_output(self, h):
+        h = self.relu(h)
+        h = self.dropout(h)
         h = self.out(h)
         return h
 

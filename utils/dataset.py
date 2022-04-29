@@ -13,11 +13,14 @@ from torch.utils.data.sampler import SubsetRandomSampler
 from torch.utils.data import DataLoader, Dataset, BatchSampler
 from pathlib import Path
 from abc import ABC
-from imblearn.over_sampling import SMOTE
+from imblearn.over_sampling import SMOTE, RandomOverSampler
 from imblearn.under_sampling import RandomUnderSampler
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
+from typing import Tuple
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 
 
@@ -354,7 +357,7 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
 
 
 class SEERDataset(Dataset):
-    def __init__(self,  path_csv: str, random_seed: int, preprocess: bool = True):
+    def __init__(self,  path_csv: str, random_seed: int, load_concept_labels: bool = False):
         """
         Load the SEER dataset.
         Args:
@@ -388,8 +391,7 @@ class SEERDataset(Dataset):
         assert set(dataset.columns) == set(expected_columns), "Invalid dataset provided."
 
         X = dataset.drop(
-            [   "Grade",
-                "Censoring",
+            [   "Censoring",
                 "Days to death or current survival status",
                 "cancer related death",
                 "any cause of  death",
@@ -412,60 +414,60 @@ class SEERDataset(Dataset):
 
         Y = dataset["cancer related death"]
         T = dataset["Days to death or current survival status"]
-        G = dataset["Grade"]
 
-        if preprocess:
+        # Remove empty events
+        remove_empty = T > 0
+        X = X[remove_empty]
+        Y = Y[remove_empty]
+        T = T[remove_empty]
 
-            # Remove empty events
-            remove_empty = T > 0
-            X = X[remove_empty]
-            Y = Y[remove_empty]
-            T = T[remove_empty]
+        # One-hot encoding
+        cat_columns = ["Clinical T stage", "Primary Gleason", "Secondary Gleason"]
+        encoders = {}
+        for col in cat_columns:
+            ohe = OneHotEncoder(handle_unknown="ignore", sparse=False)
+            ohe.fit(X[[col]].values)
 
-            # One-hot encoding
-            cat_columns = ["Clinical T stage", "Primary Gleason", "Secondary Gleason"]
-            encoders = {}
-            for col in cat_columns:
-                ohe = OneHotEncoder(handle_unknown="ignore", sparse=False)
-                ohe.fit(X[[col]].values)
+            encoders[col] = ohe
+        def encoder(df: pd.DataFrame) -> pd.DataFrame:
+            output = df.copy()
+            for col in encoders:
+                ohe = encoders[col]
+                encoded = pd.DataFrame(
+                    ohe.transform(output[[col]].values),
+                    columns=ohe.get_feature_names_out([col]),
+                    index=output.index.copy(),
+                )
+                output = pd.concat([output, encoded], axis=1)
+                output.drop(columns=[col], inplace=True)
 
-                encoders[col] = ohe
-            def encoder(df: pd.DataFrame) -> pd.DataFrame:
-                output = df.copy()
-                for col in encoders:
-                    ohe = encoders[col]
-                    encoded = pd.DataFrame(
-                        ohe.transform(output[[col]].values),
-                        columns=ohe.get_feature_names_out([col]),
-                        index=output.index.copy(),
-                    )
-                    output = pd.concat([output, encoded], axis=1)
-                    output.drop(columns=[col], inplace=True)
-
-                return output
-            X = encoder(X)
+            return output
+        X = encoder(X)
 
 
-            # Imputation
-            imp = IterativeImputer(missing_values=np.nan)
-            X = pd.DataFrame(imp.fit_transform(X), columns=X.columns)
-            assert not X.isnull().values.any()
+        # Imputation
+        imp = IterativeImputer(missing_values=np.nan)
+        X = pd.DataFrame(imp.fit_transform(X), columns=X.columns)
+        assert not X.isnull().values.any()
 
-            # Standardize continuous features
-            scaler = StandardScaler()
-            num_columns = ["Age at Diagnosis", "PSA (ng/ml)", "Number of Cores Positive", "Number of Cores Examined"]
-            X[num_columns] = scaler.fit_transform(X[num_columns])
+        # Standardize continuous features
+        scaler = StandardScaler()
+        num_columns = ["Age at Diagnosis", "PSA (ng/ml)", "Number of Cores Positive", "Number of Cores Examined"]
+        X[num_columns] = scaler.fit_transform(X[num_columns])
 
-            # Under-sample a balanced dataset
-            under_sampler = RandomUnderSampler(random_state=random_seed)
-            X, Y = under_sampler.fit_resample(X, Y)
+        # Over-sample a balanced dataset
+        over_sampler = RandomOverSampler(random_state=random_seed)
+        X, Y = over_sampler.fit_resample(X, Y)
+        G = X["Histological grade group"]
+        X = X.drop(["Histological grade group"], axis=1)
 
-            # One-hot encode concept
-            G = pd.get_dummies(G)
+        # One-hot encode concept
+        G = pd.get_dummies(G)
 
         self.X = X
         self.Y = Y
         self.G = G
+        self.load_concept_labels = load_concept_labels
 
     def __len__(self):
         return len(self.Y)
@@ -474,7 +476,12 @@ class SEERDataset(Dataset):
         x = self.X.iloc[[idx]].values
         x = torch.tensor(x, dtype=torch.float32).flatten()
         y = self.Y.iloc[[idx]].values[0]
-        return x, y
+        g = self.G.iloc[[idx]].values[0]
+        if self.load_concept_labels:
+            return x, y, g
+        else:
+            return x, y
+
 
 
 def load_cub_data(pkl_paths, use_attr, no_img, batch_size, uncertain_label=False,
@@ -627,3 +634,18 @@ def generate_cub_concept_dataset(concept_id: int, subset_size: int, random_seed:
     np.random.seed(random_seed)
     rand_perm = np.random.permutation(len(X))
     return X[rand_perm], y[rand_perm]
+
+
+def generate_seer_concept_dataset(dataset: Dataset, concept_id: int, subset_size: int, random_seed: int) -> tuple:
+    torch.manual_seed(random_seed)
+    positive_ids = []
+    negative_ids = []
+    for patient_id, (patient_data, patient_label, patient_concept) in enumerate(iter(dataset)):
+        if patient_concept[concept_id] == 1:
+            positive_ids.append(patient_id)
+        else:
+            negative_ids.append(patient_id)
+    X = torch.stack([dataset[idx][0] for idx in positive_ids[:subset_size]] + [dataset[idx][0] for idx in negative_ids[:subset_size]])
+    C = torch.cat([torch.ones(subset_size), torch.zeros(subset_size)])
+    rand_perm = torch.randperm(len(X))
+    return X[rand_perm], C[rand_perm]

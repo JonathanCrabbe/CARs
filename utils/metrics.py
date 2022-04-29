@@ -4,6 +4,18 @@ import torch.nn as nn
 import numpy as np
 from torch.utils.data import DataLoader
 from explanations.concept import ConceptExplainer, CAR
+from sklearn.metrics import accuracy_score
+
+
+def concept_accuracy(data_loader: DataLoader, concept_explainer: ConceptExplainer, concept_id: int, device: torch.device,
+                     model: nn.Module) -> float:
+    avg_meter = AverageMeter(name="Accuracy")
+    for features, labels, concept_labels in data_loader:
+        features = features.to(device)
+        representations = model.input_to_representation(features).detach().cpu().numpy()
+        predicted_concept_labels = concept_explainer.predict(representations)
+        avg_meter.update(accuracy_score(predicted_concept_labels, concept_labels[:, concept_id]), n=len(concept_labels))
+    return avg_meter.avg
 
 
 def perturbation_metric(data_loader: DataLoader, attribution: np.ndarray, device: torch.device, model: nn.Module,
