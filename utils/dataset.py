@@ -357,7 +357,7 @@ class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
 
 
 class SEERDataset(Dataset):
-    def __init__(self,  path_csv: str, random_seed: int, load_concept_labels: bool = False):
+    def __init__(self,  path_csv: str, random_seed: int, load_concept_labels: bool = False, oversample: bool = True):
         """
         Load the SEER dataset.
         Args:
@@ -455,9 +455,9 @@ class SEERDataset(Dataset):
         num_columns = ["Age at Diagnosis", "PSA (ng/ml)", "Number of Cores Positive", "Number of Cores Examined"]
         X[num_columns] = scaler.fit_transform(X[num_columns])
 
-        # Over-sample a balanced dataset
-        over_sampler = RandomOverSampler(random_state=random_seed)
-        X, Y = over_sampler.fit_resample(X, Y)
+        if oversample:  # Over-sample a balanced dataset
+            over_sampler = RandomOverSampler(random_state=random_seed)
+            X, Y = over_sampler.fit_resample(X, Y)
         G = X["Histological grade group"]
         X = X.drop(["Histological grade group"], axis=1)
 
@@ -481,7 +481,6 @@ class SEERDataset(Dataset):
             return x, y, g
         else:
             return x, y
-
 
 
 def load_cub_data(pkl_paths, use_attr, no_img, batch_size, uncertain_label=False,

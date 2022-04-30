@@ -9,7 +9,7 @@ from models.seer import SEERClassifier
 from pathlib import Path
 from torch.utils.data import random_split, DataLoader
 from utils.plot import plot_global_explanation
-from explanations.concept import CAR
+from explanations.concept import CAR, CAV
 
 
 def train_model(random_seed: int,  batch_size: int, latent_dim: int, model_name: str, test_fraction: float = 0.1,
@@ -44,7 +44,7 @@ def use_case(random_seed: int,  batch_size: int, latent_dim: int, plot: bool, mo
         os.makedirs(save_dir)
 
     # Load data
-    seer_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, load_concept_labels=True)
+    seer_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, load_concept_labels=True, oversample=False)
     train_size = int((1 - test_fraction) * len(seer_data))
     test_size = len(seer_data) - train_size
     train_data, test_data = random_split(seer_data, lengths=[train_size, test_size])
@@ -58,7 +58,8 @@ def use_case(random_seed: int,  batch_size: int, latent_dim: int, plot: bool, mo
     model.to(device)
 
     results_data = []
-    car_classifiers = [CAR(device, batch_size) for _ in range(5)]
+    car_classifiers = [CAR(device, batch_size, kernel="linear") for _ in range(5)]
+    cav_classifiers = [CAV(device, batch_size) for _ in range(5)]
     for concept_id in range(5):
         logging.info(f"Now fitting a CAR classifier for Grade {concept_id+1} patients")
         X_train, C_train = generate_seer_concept_dataset(train_data, concept_id, 200, random_seed)
@@ -66,7 +67,10 @@ def use_case(random_seed: int,  batch_size: int, latent_dim: int, plot: bool, mo
         H_train = model.input_to_representation(X_train).detach().cpu().numpy()
         car = car_classifiers[concept_id]
         car.fit(H_train, C_train.numpy())
+        cav = cav_classifiers[concept_id]
+        cav.fit(H_train, C_train.numpy())
         print(concept_accuracy(test_loader, car, concept_id, device, model))
+        print(concept_accuracy(test_loader, cav, concept_id, device, model))
 
 
 
