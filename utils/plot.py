@@ -78,6 +78,28 @@ def plot_global_explanation(results_dir: Path, dataset_name: str, concept_catego
     logging.info(f"TCAV-True Prop. Correlation: {np.corrcoef(tcav_scores, true_scores)[0, 1]:.2g}")
 
 
+def plot_seer_global_explanation(results_dir: Path) -> None:
+    sns.set(font_scale=1.2)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
+    metrics_df = pd.read_csv(results_dir / "metrics.csv")
+    concepts = list(metrics_df.columns[2:])
+    methods = metrics_df["Method"].unique()
+    classes_dic = {0: "Survives", 1: "Dies"}
+    plot_data = []
+    for class_idx, concept, method in itertools.product(classes_dic, concepts, methods):
+        attr = np.array(metrics_df.loc[(metrics_df.Class == class_idx) & (metrics_df.Method == method)][concept])
+        score = np.sum(attr)/len(attr)
+        plot_data.append([method, classes_dic[class_idx], concept, score])
+    plot_df = pd.DataFrame(plot_data, columns=["Method", "Patient outcome", "Concept", "Score"])
+    sns.barplot(data=plot_df, x="Concept", y="Score", hue="Patient outcome")
+    plt.ylim(bottom=0, top=1.1)
+    plt.ylabel("TCAR Score")
+    plt.tight_layout()
+    plt.savefig(results_dir / "seer_global.pdf")
+    plt.close()
+
+
 def plot_perturbation_sensitivity(results_dir: Path, concept: str, dataset_name: str) -> None:
     sns.set(font_scale=1)
     sns.color_palette("colorblind")
@@ -183,6 +205,20 @@ def plot_time_series_saliency(tseries: torch.Tensor, saliency: np.ndarray, plot_
         cbar.set_label("Importance")
     plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_{concept_name}_saliency.pdf")
+    plt.close()
+
+
+def plot_seer_feature_importance(results_dir: Path) -> None:
+    sns.set(font_scale=1.0)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
+    metrics_df = pd.read_csv(results_dir / "metrics.csv")
+    ax = sns.boxplot(data=metrics_df, showfliers=False)
+    plt.ylabel("Absolute Importance")
+    plt.xlabel("Feature")
+    wrap_labels(ax, 8)
+    plt.tight_layout()
+    plt.savefig(results_dir/"seer_feature_importance.pdf")
     plt.close()
 
 
@@ -333,9 +369,15 @@ if __name__ == "__main__":
     if args.name == "concept_accuracy":
         plot_concept_accuracy(save_path, args.concept, args.dataset)
     elif args.name == "global_explanations":
-        plot_global_explanation(save_path, args.dataset, concept_categories=concept_categories)
+        if args.dataset != "seer":
+            plot_global_explanation(save_path, args.dataset, concept_categories=concept_categories)
+        else:
+            plot_seer_global_explanation(save_path)
     elif args.name == "feature_importance":
-        plot_attribution_correlation(save_path, args.dataset)
+        if args.dataset != "seer":
+            plot_attribution_correlation(save_path, args.dataset)
+        else:
+            plot_seer_feature_importance(save_path)
     elif args.name == "concept_modulation":
         plot_modulation_impact(save_path, args.dataset)
     else:

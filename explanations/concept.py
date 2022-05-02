@@ -154,6 +154,8 @@ class CAR(ConceptExplainer, ABC):
             # We unstack the tensors to return a kernel matrix of shape len(h1) x len(h2)!
             return lambda h1, h2: torch.exp(-torch.sum(((h1.unsqueeze(1) - h2.unsqueeze(0)) /
                                                         (latent_dim*kernel_width))**2, dim=-1))
+        elif self.kernel == 'linear':
+            return lambda h1, h2: torch.einsum("abi, abi -> ab", h1.unsqueeze(1), h2.unsqueeze(0))
 
     def concept_density(self, latent_reps: torch.Tensor, positive_set: bool) -> torch.Tensor:
         """

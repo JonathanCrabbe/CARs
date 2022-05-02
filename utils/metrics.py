@@ -7,8 +7,8 @@ from explanations.concept import ConceptExplainer, CAR
 from sklearn.metrics import accuracy_score
 
 
-def concept_accuracy(data_loader: DataLoader, concept_explainer: ConceptExplainer, concept_id: int, device: torch.device,
-                     model: nn.Module) -> float:
+def evaluate_concept_accuracy(data_loader: DataLoader, concept_explainer: ConceptExplainer, concept_id: int, device: torch.device,
+                              model: nn.Module) -> float:
     avg_meter = AverageMeter(name="Accuracy")
     for features, labels, concept_labels in data_loader:
         features = features.to(device)
