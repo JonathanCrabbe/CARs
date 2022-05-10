@@ -13,6 +13,7 @@ from utils.plot import plot_seer_global_explanation, plot_seer_feature_importanc
 from explanations.concept import CAR, CAV
 from explanations.feature import CARFeatureImportance
 from tqdm import tqdm
+from sklearn.metrics import accuracy_score
 
 
 def train_model(random_seed: int,  batch_size: int, latent_dim: int, model_name: str, test_fraction: float = 0.1,
@@ -26,10 +27,8 @@ def train_model(random_seed: int,  batch_size: int, latent_dim: int, model_name:
     if not model_dir.exists():
         os.makedirs(model_dir)
 
-    seer_data = SEERDataset(str(data_dir/"seer.csv"), random_seed)
-    train_size = int((1-test_fraction)*len(seer_data))
-    test_size = len(seer_data) - train_size
-    train_data, test_data = random_split(seer_data, lengths=[train_size, test_size])
+    train_data = SEERDataset(str(data_dir/"seer.csv"), random_seed, train=True, test_fraction=test_fraction)
+    test_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, train=False, test_fraction=test_fraction)
     train_loader = DataLoader(train_data, batch_size, shuffle=True)
     test_loader = DataLoader(test_data, batch_size, shuffle=False)
 
@@ -47,10 +46,8 @@ def concept_accuracy(random_seed: int, batch_size: int, latent_dim: int, model_n
         os.makedirs(save_dir)
 
     # Load data
-    seer_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, load_concept_labels=True, oversample=False)
-    train_size = int((1 - test_fraction) * len(seer_data))
-    test_size = len(seer_data) - train_size
-    train_data, test_data = random_split(seer_data, lengths=[train_size, test_size])
+    train_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, train=True, test_fraction=test_fraction, load_concept_labels=True)
+    test_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, train=False, test_fraction=test_fraction, load_concept_labels=True)
     test_loader = DataLoader(test_data, batch_size)
 
     # Load model
@@ -64,15 +61,20 @@ def concept_accuracy(random_seed: int, batch_size: int, latent_dim: int, model_n
     cav_classifiers = [CAV(device, batch_size) for _ in range(5)]
     for concept_id in range(5):
         logging.info(f"Now fitting a CAR classifier for Grade {concept_id+1} patients")
-        X_train, C_train = generate_seer_concept_dataset(train_data, concept_id, 200, random_seed)
+        X_train, C_train = generate_seer_concept_dataset(train_data, concept_id, 250, random_seed)
         X_train = X_train.to(device)
         H_train = model.input_to_representation(X_train).detach().cpu().numpy()
         car = car_classifiers[concept_id]
         car.fit(H_train, C_train.numpy())
         cav = cav_classifiers[concept_id]
         cav.fit(H_train, C_train.numpy())
-        results_data.append([f"Grade {concept_id+1}", "CAR", evaluate_concept_accuracy(test_loader, car, concept_id, device, model)])
-        results_data.append([f"Grade {concept_id+1}", "CAV", evaluate_concept_accuracy(test_loader, cav, concept_id, device, model)])
+        X_test, C_test = generate_seer_concept_dataset(test_data, concept_id, 50, random_seed)
+        X_test = X_test.to(device)
+        H_test = model.input_to_representation(X_test).detach().cpu().numpy()
+        results_data.append([f"Grade {concept_id + 1}", "CAR", accuracy_score(C_test, car.predict(H_test))])
+        results_data.append([f"Grade {concept_id + 1}", "CAV", accuracy_score(C_test, cav.predict(H_test))])
+        #results_data.append([f"Grade {concept_id+1}", "CAR", evaluate_concept_accuracy(test_loader, car, concept_id, device, model)])
+        #results_data.append([f"Grade {concept_id+1}", "CAV", evaluate_concept_accuracy(test_loader, cav, concept_id, device, model)])
     results_df = pd.DataFrame(results_data, columns=["Concept", "Method", "Test ACC"])
     logging.info(f"Saving results in {save_dir}")
     results_df.to_csv(save_dir/"metrics.csv")
@@ -88,10 +90,8 @@ def global_explanations(random_seed: int, batch_size: int, latent_dim: int, plot
         os.makedirs(save_dir)
 
     # Load data
-    seer_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, load_concept_labels=True, oversample=False)
-    train_size = int((1 - test_fraction) * len(seer_data))
-    test_size = len(seer_data) - train_size
-    train_data, test_data = random_split(seer_data, lengths=[train_size, test_size])
+    train_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, train=True, test_fraction=test_fraction, load_concept_labels=True)
+    test_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, train=False, test_fraction=test_fraction, load_concept_labels=True)
     test_loader = DataLoader(test_data, batch_size)
 
     # Load model
@@ -103,7 +103,7 @@ def global_explanations(random_seed: int, batch_size: int, latent_dim: int, plot
     car_classifiers = [CAR(device, batch_size, kernel="linear") for _ in range(5)]
     for concept_id in range(5):
         logging.info(f"Now fitting a CAR classifier for Grade {concept_id+1} patients")
-        X_train, C_train = generate_seer_concept_dataset(train_data, concept_id, 200, random_seed)
+        X_train, C_train = generate_seer_concept_dataset(train_data, concept_id, 250, random_seed)
         X_train = X_train.to(device)
         H_train = model.input_to_representation(X_train).detach().cpu().numpy()
         car = car_classifiers[concept_id]
@@ -134,10 +134,8 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int, plot:
         os.makedirs(save_dir)
 
     # Load data
-    seer_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, load_concept_labels=True, oversample=False)
-    train_size = int((1 - test_fraction) * len(seer_data))
-    test_size = len(seer_data) - train_size
-    train_data, test_data = random_split(seer_data, lengths=[train_size, test_size])
+    train_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, train=True, test_fraction=test_fraction, load_concept_labels=True)
+    test_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, train=False, test_fraction=test_fraction, load_concept_labels=False)
     test_loader = DataLoader(test_data, batch_size)
 
     # Load model
@@ -150,15 +148,13 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int, plot:
     baselines = torch.zeros((1, 21)).to(device)
     for concept_id in range(5):
         logging.info(f"Now fitting a CAR classifier for Grade {concept_id+1} patients")
-        seer_data.load_concept_labels = True
-        X_train, C_train = generate_seer_concept_dataset(train_data, concept_id, 200, random_seed)
+        X_train, C_train = generate_seer_concept_dataset(train_data, concept_id, 250, random_seed)
         X_train = X_train.to(device)
         H_train = model.input_to_representation(X_train).detach().cpu().numpy()
         car = CAR(device, batch_size, kernel="linear")
         car.fit(H_train, C_train.numpy())
         logging.info(f"Computing feature importance over the test set for Grade {concept_id+1} patients")
         attribution_method = CARFeatureImportance("Integrated Gradient", car, model, device)
-        seer_data.load_concept_labels = False
         attributions = attribution_method.attribute(test_loader, baselines=baselines)
         for attribution in attributions:
             reduced_attribution = np.abs(attribution[:4]).tolist() + [np.sum(np.abs(attribution[4:13]))] + \
