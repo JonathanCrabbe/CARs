@@ -305,6 +305,27 @@ def plot_counterfactual_series(factuals: torch.Tensor, counterfactuals: list[np.
     plt.close()
 
 
+def plot_kernel_sensitivity(results_dir: Path, dataset_name: str) -> None:
+    sns.set(font_scale=1)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
+    metrics_df = pd.read_csv(results_dir/"metrics.csv")
+    sns.boxplot(data=metrics_df, x="Set", y="Accuracy", hue="Kernel")
+    plt.ylabel(f"Overall Concept Accuracy")
+    plt.savefig(results_dir / f"{dataset_name}_kernel_sensitivity.pdf")
+    plt.close()
+
+
+def plot_concept_size_impact(results_dir: Path, dataset_name: str) -> None:
+    sns.set(font_scale=1)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
+    metrics_df = pd.read_csv(results_dir/"metrics.csv")
+    sns.lineplot(data=metrics_df, x="Concept Sets Size", y="Test Accuracy", hue="Concept")
+    plt.savefig(results_dir / f"{dataset_name}_concept_size_impact.pdf")
+    plt.close()
+
+
 def wrap_labels(ax, width, break_long_words=False, do_y: bool = False) -> None:
     """
     Break labels in several lines in a figure

@@ -1,7 +1,6 @@
 import itertools
 import logging
 import argparse
-
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
@@ -15,11 +14,13 @@ from torchvision import transforms
 from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
 from utils.dataset import generate_mnist_concept_dataset
 from utils.plot import (plot_concept_accuracy, plot_global_explanation, plot_grayscale_saliency,
-                        plot_attribution_correlation, plot_counterfactual_images, plot_modulation_impact)
+                        plot_attribution_correlation, plot_counterfactual_images, plot_modulation_impact,
+                        plot_kernel_sensitivity, plot_concept_size_impact)
 from utils.metrics import concept_impact, modulation_norm
 from explanations.concept import CAR, CAV
 from explanations.feature import CARFeatureImportance, VanillaFeatureImportance, CARModulator, CAVModulator
 from sklearn.metrics import accuracy_score
+from sklearn.gaussian_process.kernels import Matern
 from tqdm import tqdm
 
 concept_to_class = {"Loop": [0, 2, 6, 8, 9],  "Vertical Line": [1, 4, 7],
@@ -369,6 +370,98 @@ def concept_dream(random_seed: int, latent_dim: int,  plot: bool,
         plt.close()
 
 
+def kernel_sensitivity(random_seeds: list[int], latent_dim: int, plot: bool,
+                       save_dir: Path = Path.cwd()/"results/mnist/kernel_sensitivity",
+                       data_dir: Path = Path.cwd()/"data/mnist",
+                       model_dir: Path = Path.cwd() / f"results/mnist/",
+                       model_name: str = "model",) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    torch.manual_seed(random_seeds[0])
+
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+
+    model_dir = model_dir/model_name
+    model = ClassifierMnist(latent_dim, model_name)
+    model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
+    model.to(device)
+    model.eval()
+
+    # Fit a concept classifier and test accuracy for each concept
+    kernels = {"Gaussian RBF": "rbf", "Linear": "linear", "Polynomial": "poly",
+               "Sigmoid": "sigmoid", "Matern": Matern()}
+    cars = {kernel_name: CAR(device, kernel=kernels[kernel_name]) for kernel_name in kernels}
+    results_data = []
+    for concept_name, random_seed in itertools.product(concept_to_class, random_seeds):
+        logging.info(f"Working with concept {concept_name} and seed {random_seed}")
+        # Compute representation
+        X_train, C_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, True, 200, random_seed)
+        H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
+        X_val, C_val = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, True, 50, random_seed+1)
+        H_val = model.input_to_representation(torch.from_numpy(X_val).to(device)).detach().cpu().numpy()
+        # Create concept classifiers, fit them and test them
+        for kernel_name in cars:
+            car = cars[kernel_name]
+            car.fit(H_train, C_train)
+            results_data.append(["Training", concept_name, random_seed, kernel_name, accuracy_score(C_train, car.predict(H_train))])
+            results_data.append(["Validation", concept_name, random_seed, kernel_name, accuracy_score(C_val, car.predict(H_val))])
+
+    logging.info(f"Saving results in {str(save_dir)}")
+    results_df = pd.DataFrame(results_data, columns=["Set", "Concept", "Seed", "Kernel", "Accuracy"])
+    csv_path = save_dir/"metrics.csv"
+    results_df.to_csv(csv_path, header=True, mode="w", index=False)
+    if plot:
+        plot_kernel_sensitivity(save_dir, "mnist")
+
+
+def concept_size_impact(random_seeds: list[int], latent_dim: int, concept_sizes: list[int], plot: bool,
+                        save_dir: Path = Path.cwd()/"results/mnist/concept_set_impact",
+                        data_dir: Path = Path.cwd()/"data/mnist",
+                        model_dir: Path = Path.cwd() / f"results/mnist/",
+                        model_name: str = "model",) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    torch.manual_seed(random_seeds[0])
+
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+
+    model_dir = model_dir/model_name
+    model = ClassifierMnist(latent_dim, model_name)
+    model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
+    model.to(device)
+    model.eval()
+
+    # Fit a concept classifier and test accuracy for each concept
+    results_data = []
+    for concept_name, random_seed in itertools.product(concept_to_class, random_seeds):
+        # Compute representation
+        X_test, C_test = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, False, 50, random_seed)
+        H_test = model.input_to_representation(torch.from_numpy(X_test).to(device)).detach().cpu().numpy()
+        # Create concept classifiers, fit them and test them for each representation space
+        prev_size = 0
+        concept_sizes.sort()
+        C_train = np.empty([1], dtype=int)
+        H_train = np.empty([1]+list(H_test.shape[1:]))
+        for concept_size in concept_sizes:
+            logging.info(f"Working with concept {concept_name}, seed {random_seed} and a set of size {concept_size}")
+            n_add = concept_size - prev_size
+            prev_size = concept_size
+            X_add, C_add = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, True, n_add, random_seed+concept_size)
+            H_add = model.input_to_representation(torch.from_numpy(X_add).to(device)).detach().cpu().numpy()
+            C_train = np.concatenate((C_train, C_add), axis=0)
+            H_train = np.concatenate((H_train, H_add), axis=0)
+            car = CAR(device)
+            car.fit(H_train, C_train)
+            results_data.append([concept_size, random_seed, concept_name, accuracy_score(C_train, car.predict(H_train))])
+
+    logging.info(f"Saving results in {str(save_dir)}")
+    results_df = pd.DataFrame(results_data, columns=["Concept Sets Size", "Random Seed", "Concept", "Test Accuracy"])
+    csv_path = save_dir/"metrics.csv"
+    results_df.to_csv(csv_path, header=True, mode="w", index=False)
+    if plot:
+        plot_concept_size_impact(save_dir, "mnist")
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -378,6 +471,7 @@ if __name__ == "__main__":
     parser.add_argument("--latent_dim", type=int, default=5)
     parser.add_argument("--train", action='store_true')
     parser.add_argument("--plot", action='store_true')
+    parser.add_argument("--concept_sizes", nargs="+", type=int, default=list(range(10, 310, 30)))
     args = parser.parse_args()
 
     model_name = f"model_{args.latent_dim}"
@@ -395,6 +489,10 @@ if __name__ == "__main__":
         concept_modulation(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
     elif args.name == "concept_dream":
         concept_dream(args.seeds[0], args.latent_dim, args.plot, model_name=model_name)
+    elif args.name == "kernel_sensitivity":
+        kernel_sensitivity(args.seeds, args.latent_dim, args.plot, model_name=model_name)
+    elif args.name == "concept_size_impact":
+        concept_size_impact(args.seeds, args.latent_dim, args.concept_sizes, args.plot, model_name=model_name)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 
