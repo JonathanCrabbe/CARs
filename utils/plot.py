@@ -11,6 +11,7 @@ import numpy as np
 from pathlib import Path
 from utils.metrics import correlation_matrix
 from utils.dataset import CUBDataset
+from sklearn.metrics import jaccard_score
 
 
 def plot_concept_accuracy(results_dir: Path, concept: str, dataset_name: str) -> None:
@@ -130,11 +131,12 @@ def plot_attribution_correlation(results_dir: Path, dataset_name: str, filtered_
         ticks = attribution_dic.keys()
     else:
         ticks = []
+    mask = np.triu(np.ones(corr_matrix.shape))
     ax = sns.heatmap(corr_matrix, vmin=-1, vmax=1, cmap=sns.diverging_palette(10, 133, as_cmap=True), cbar=True,
-                     xticklabels=ticks, yticklabels=ticks,
+                     xticklabels=ticks, yticklabels=ticks, mask=mask,
                      cbar_kws={'label': 'Correlation'}, annot=True)
     if show_ticks:
-        wrap_labels(ax, 8, True, True)
+        wrap_labels(ax, 10, False, True)
     plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_attr_corr.pdf")
     plt.close()
@@ -323,6 +325,28 @@ def plot_concept_size_impact(results_dir: Path, dataset_name: str) -> None:
     metrics_df = pd.read_csv(results_dir/"metrics.csv")
     sns.lineplot(data=metrics_df, x="Concept Sets Size", y="Test Accuracy", hue="Concept")
     plt.savefig(results_dir / f"{dataset_name}_concept_size_impact.pdf")
+    plt.close()
+
+
+def plot_tcar_inter_concepts(results_dir: Path, dataset_name: str) -> None:
+    sns.set(font_scale=.8)
+    sns.color_palette("colorblind")
+    sns.set_style("white")
+    metrics_df = pd.read_csv(results_dir/"metrics.csv")
+    concepts = metrics_df.columns
+    n_concepts = len(concepts)
+    tcar_matrix = np.zeros((n_concepts, n_concepts))
+    for i in range(1, n_concepts):
+        for j in range(i):
+            tcar_matrix[i, j] = jaccard_score(metrics_df[concepts[i]], metrics_df[concepts[j]])
+    mask = np.triu(np.ones((n_concepts, n_concepts)))
+    ax = sns.heatmap(tcar_matrix, vmin=0, vmax=1, cmap=sns.color_palette("light:b", as_cmap=True), cbar=True,
+                     xticklabels=concepts, yticklabels=concepts,
+                     cbar_kws={'label': 'TCAR'}, annot=True, mask=mask)
+
+    wrap_labels(ax, 10, True, True)
+    plt.tight_layout()
+    plt.savefig(results_dir/f"{dataset_name}_tcar_inter_concept.pdf")
     plt.close()
 
 

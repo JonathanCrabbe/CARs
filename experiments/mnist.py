@@ -15,7 +15,7 @@ from utils.hooks import register_hooks, get_saved_representations, remove_all_ho
 from utils.dataset import generate_mnist_concept_dataset
 from utils.plot import (plot_concept_accuracy, plot_global_explanation, plot_grayscale_saliency,
                         plot_attribution_correlation, plot_counterfactual_images, plot_modulation_impact,
-                        plot_kernel_sensitivity, plot_concept_size_impact)
+                        plot_kernel_sensitivity, plot_concept_size_impact, plot_tcar_inter_concepts)
 from utils.metrics import concept_impact, modulation_norm
 from explanations.concept import CAR, CAV
 from explanations.feature import CARFeatureImportance, VanillaFeatureImportance, CARModulator, CAVModulator
@@ -462,6 +462,52 @@ def concept_size_impact(random_seeds: list[int], latent_dim: int, concept_sizes:
         plot_concept_size_impact(save_dir, "mnist")
 
 
+def tcar_inter_concept(random_seed: int, batch_size: int, latent_dim: int,  plot: bool,
+                       save_dir: Path = Path.cwd()/"results/mnist/tcar_inter_concept",
+                       data_dir: Path = Path.cwd()/"data/mnist",
+                       model_dir: Path = Path.cwd() / f"results/mnist",
+                       model_name: str = "model") -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    torch.manual_seed(random_seed)
+
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+
+    model_dir = model_dir/model_name
+    model = ClassifierMnist(latent_dim, model_name)
+    model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
+    model.to(device)
+    model.eval()
+
+    # Fit a concept classifier and test accuracy for each concept
+    results_data = []
+    car_classifiers = [CAR(device) for _ in concept_to_class]
+
+    for concept_name, car_classifier in zip(concept_to_class, car_classifiers):
+        logging.info(f"Now fitting concept classifiers for {concept_name}")
+        X_train, y_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, True, 200, random_seed)
+        H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
+        car_classifier.fit(H_train, y_train)
+
+
+    test_set = MNIST(data_dir, train=False, download=True)
+    test_set.transform = transforms.Compose([transforms.ToTensor()])
+    test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
+
+    logging.info("Now predicting concepts on the test set")
+    for X_test, y_test in tqdm(test_loader, unit="batch", leave=False):
+        H_test = model.input_to_representation(X_test.to(device)).detach().cpu().numpy()
+        car_preds = [car.predict(H_test) for car in car_classifiers]
+        results_data += [[int(car_pred[idx]) for car_pred in car_preds] for idx in range(len(y_test))]
+
+    logging.info(f"Saving results in {str(save_dir)}")
+    csv_path = save_dir / "metrics.csv"
+    results_df = pd.DataFrame(results_data, columns=list(concept_to_class.keys()))
+    results_df.to_csv(csv_path, index=False)
+    if plot:
+        plot_tcar_inter_concepts(save_dir, "mnist")
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -493,6 +539,8 @@ if __name__ == "__main__":
         kernel_sensitivity(args.seeds, args.latent_dim, args.plot, model_name=model_name)
     elif args.name == "concept_size_impact":
         concept_size_impact(args.seeds, args.latent_dim, args.concept_sizes, args.plot, model_name=model_name)
+    elif args.name == "tcar_inter_concepts":
+        tcar_inter_concept(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 
