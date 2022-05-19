@@ -136,7 +136,7 @@ def plot_attribution_correlation(results_dir: Path, dataset_name: str, filtered_
                      xticklabels=ticks, yticklabels=ticks, mask=mask,
                      cbar_kws={'label': 'Correlation'}, annot=True)
     if show_ticks:
-        wrap_labels(ax, 10, False, True)
+        wrap_labels(ax, 9, True, True)
     plt.tight_layout()
     plt.savefig(results_dir/f"{dataset_name}_attr_corr.pdf")
     plt.close()
