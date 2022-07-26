@@ -100,7 +100,8 @@ Small NLP experiment as for Reviewer f9CQ.
 **Is it possible to relax the assumption that such a class of techniques requires additional annotation of concepts? 
 As of now, CAR requires a user to specify the positive and negative examples for each concept.**
 
-This could probably be merged with Point 2 above.
+This could probably be merged with Point 2 above. Note that human concepts need to be defined by humans.
+
 
 ## 6. Minor Points
 **Given that CAR assumes to have access to the feature extractor of the model,
@@ -113,12 +114,12 @@ We will make sure that to implement those changes in the final manuscript.
 
 # Experiments TODO
 
-* Kernel width optimization
-* CUB with ResNet 
-* CUB TCAR/TCAV and Acc with mixed-7b layer
-* NLP Experiment
-* Robustness to adversarial attacks
-* CUB with background shift
-* CAR and unsupervised concepts?
-* CAR Sensitivity?
-* Training regularization?
+* *Small* Kernel width optimization
+* *Medium* CUB with ResNet 
+* *Small* CUB TCAR/TCAV and Acc with mixed-7b layer
+* *Large* NLP Experiment
+* *Small* Robustness to adversarial attacks
+* *Medium* CUB with background shift
+* *?* CAR and unsupervised concepts?
+* *?* CAR Sensitivity?
+* *?* Training regularization?
