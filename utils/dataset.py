@@ -528,12 +528,13 @@ def load_cub_data(pkl_paths, use_attr, no_img, batch_size, uncertain_label=False
         ])
     else:
         transform = transforms.Compose([
-            # transforms.Resize((resized_resol, resized_resol)),
-            transforms.CenterCrop(resol),
+            transforms.Resize((resized_resol, resized_resol)),
+            #transforms.CenterCrop(resol), BEFORE UNCOM
             transforms.ToTensor(),  # implicitly divides by 255
             # transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
+
 
     dataset = CUBDataset(pkl_paths, use_attr, no_img, uncertain_label, image_dir, n_class_attr, transform)
     if is_training:

@@ -8,7 +8,7 @@ import optuna
 from abc import ABC
 from sklearn.svm import SVC
 from sklearn.linear_model import SGDClassifier
-from sklearn.model_selection import permutation_test_score
+from sklearn.model_selection import permutation_test_score, train_test_split
 from sklearn.metrics import accuracy_score
 
 
@@ -196,6 +196,35 @@ class CAR(ConceptExplainer, ABC):
         self.kernel_width = study.best_params["kernel_width"]
         logging.info(f"Optimal kernel width {self.kernel_width:.3g} with training accuracy {study.best_value:.2g}")
 
+    def fit_cv(self, concept_reps: np.ndarray, concept_labels: np.ndarray) -> None:
+        """
+        Fit the concept classifier to the dataset (latent_reps, concept_labels) by tuning the kernel width
+        Args:
+            concept_reps: latent representations of the examples illustrating the concept
+            concept_labels: labels indicating the presence (1) or absence (0) of the concept
+        """
+        super(CAR, self).fit(concept_reps, concept_labels)
+
+        X_train, X_val, y_train, y_val = train_test_split(concept_reps, concept_labels,
+                                                            test_size=int(.3 * len(concept_reps)), stratify=concept_labels)
+
+        def objective(trial: optuna.Trial) -> float:
+            kernel = trial.suggest_categorical('kernel', ['linear', 'poly', 'rbf', 'sigmoid'])
+            gamma = trial.suggest_loguniform('gamma', 1e-3, 1e3)
+            C = trial.suggest_loguniform('C', 1e-3, 1e3)
+            classifier = SVC(kernel=kernel, gamma=gamma, C=C)
+            classifier.fit(X_train, y_train)
+            return accuracy_score(y_val, classifier.predict(X_val))
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=200, show_progress_bar=True)
+        best_params = study.best_params
+        self.classifier = SVC(**best_params)
+        self.classifier.fit(concept_reps, concept_labels)
+        self.kernel_width = best_params['gamma']
+        logging.info(f"Optimal hyperparameters {best_params} with validation accuracy {study.best_value:.2g}")
+
 
 class CAV(ConceptExplainer, ABC):
     def __init__(self, device: torch.device, batch_size: int = 50):
@@ -239,9 +268,13 @@ class CAV(ConceptExplainer, ABC):
         one_hot_labels = F.one_hot(labels, num_classes).to(self.device)
         latent_reps = torch.from_numpy(latent_reps).to(self.device).requires_grad_()
         outputs = rep_to_output(latent_reps)
-        grads = torch.autograd.grad(outputs, latent_reps, grad_outputs=one_hot_labels)
+        grads = torch.autograd.grad(outputs, latent_reps, grad_outputs=one_hot_labels)[0]
         cav = self.get_activation_vector()
-        return torch.einsum("bi,bi->b", cav, grads[0]).detach().cpu().numpy()
+        if len(grads.shape) > 2:
+            grads = grads.flatten(start_dim=1)
+        if len(cav.shape) > 2:
+            cav = cav.flatten(start_dim=1)
+        return torch.einsum("bi,bi->b", cav, grads).detach().cpu().numpy()
 
     def permutation_test(self, concept_reps: np.ndarray, concept_labels: np.ndarray,
                          n_perm: int = 100, n_jobs: int = -1) -> float:
