@@ -66,7 +66,7 @@ def concept_accuracy(random_seeds: list[int], plot: bool, batch_size: int,
 
     # Fit a concept classifier and test accuracy for each concept
     results_data = []
-    for concept_id, concept_name in enumerate(concept_names):
+    for concept_id, concept_name in enumerate(concept_names[:2]):
         for random_seed in random_seeds:
             logging.info(f"Working with concept {concept_name} and seed {random_seed}")
             # Save representations for training concept examples and then remove the hooks

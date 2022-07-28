@@ -264,6 +264,8 @@ class CUBResNet(nn.Module):
         self.base_model = resnet50(pretrained=True)
         self.base_model.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.base_model.fc = nn.Linear(512 * 4, self.n_class)
+        self.criterion = nn.CrossEntropyLoss()
+        self.name = name
 
     def forward(self, x):
         return self.base_model(x)
@@ -348,8 +350,8 @@ class CUBResNet(nn.Module):
 
         """
         self.to(device)
-        optim = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=1e-05)
-        #optim = torch.optim.SGD(self.parameters(), lr=lr, weight_decay=4e-05, momentum=.9)
+        #optim = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=1e-05)
+        optim = torch.optim.SGD(self.parameters(), lr=lr, weight_decay=4e-05, momentum=.9)
         waiting_epoch = 0
         best_test_acc = 0
         for epoch in range(n_epoch):
@@ -392,6 +394,5 @@ class CUBResNet(nn.Module):
 
     def get_hooked_modules(self) -> dict[str, nn.Module]:
         return {
-            "Layer1": self.base_model.layer1, "Layer2": self.base_model.layer2,
             "Layer3": self.base_model.layer3, "Layer4": self.base_model.layer4
                }
