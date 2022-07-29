@@ -134,3 +134,6 @@ dmypy.json
 # Project specific
 data/
 results/
+
+# NLP
+.vector_cache
