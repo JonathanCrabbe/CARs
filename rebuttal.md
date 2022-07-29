@@ -4,9 +4,13 @@
 **The paper considers mostly convolutional networks. It lacks analysis of more state-of-the art
 architectures like residual networks or transformers.**
 
-Redo CUB with a ResNet.
+Redo CUB with a ResNet. Put results here when available
 
-Do a small NLP experiment.
+| Layer   |   CAR Accuracy  (mean $\pm$ sem) |   CAV Accuracy (mean $\pm$ sem) |  
+|:--------|------------------:|------------------:|
+| Layer4  |          .89 $\pm$ .01  |          .87 $\pm$ .01  |
+
+Copy the NLP experiment from reviewer qiiw.
 
 ## 2. Increasing Explainability at Training Time
 **Would it be possible to get inspiration from the insights in the paper to improve
@@ -60,7 +64,7 @@ We have used the default hyperparameters in the scikit-learn implementation of s
 In all our experiments, CAR classifiers substantially outperform CAV hyperparameters without having to tune the hyperparameters.
 
 In the case where the user desires a CAR classifier that generalizes as well as possible, tuning these hyperparameters might be useful. We propose to tune the hyperparameters $\theta_h$ of our CAR classifiers $s^c_{\kappa}$ for each concept $c \in [C]$ by using Bayesian optimization
-and a validation concept set :
+and a validation concept set:
 
 1. Randomly sample the hyperparameters from an initial prior distribution $\theta_h \sim P_{\mathrm{prior}}$.
 2. Split the concept sets $\mathcal{P}^c, \mathcal{N}^c$
@@ -70,7 +74,7 @@ the training concept sets $\mathcal{P}^c_{\mathrm{train}}, \mathcal{N}^c_{\mathr
 4. Measure the accuracy $\mathrm{ACC}_{\mathrm{val}} = \frac{\sum_{x \in \mathcal{P}^c_{\mathrm{val}}} \boldsymbol{1}(s^c_{\kappa}\circ \ g(x)=1) \ + \
  \sum_{x \in \mathcal{N}^c_{\mathrm{val}}} \boldsymbol{1}(s^c_{\kappa}\circ \ g(x)=0)}{|\mathcal{P}^c_{\mathrm{val}} \ \cup \ \mathcal{N}^c_{\mathrm{val}}|}$
 5. Update the current hyperparameters $\theta_h$ based on $\mathrm{ACC}_{\mathrm{val}}$
-using Bayesian optimizatin (Optuna in our case).
+using Bayesian optimization (Optuna in our case).
 6. Repeat 3-5 for a predetermined number of trials.
 
 We applied this process to the CAR accuracy experiment (same setup as in Section 3.1.1 of the main paper) to tune the CAR classifiers for the CUB concepts. Interestingly, we noticed no improvement
@@ -82,8 +86,7 @@ of CAR classifiers might be useful in other cases so we will add it to the manus
 We agree that not all concepts can be captured by CAR classifiers, even after hyperparameter
 optimization (e.g. Figure 4.c from the paper, we see that CAR classifiers don't generalize well on the layer Mixed-5d). As we argue in the paper, this is a strong indication that our concept
 smoothness assumption (Assumption 2.1) is violated. This implies that concepts are
-not smoothly encoded in the geometry of the model's representation space $\mathcal{H}$. The user can therefore deduce that the concept is unlikely to be salient to interpret $\mathcal{H}$. In that sense, the inability to fit CAR classifiers that generalize well is as informative
-as the ability to fit CAR classifiers that generalize well.
+not smoothly encoded in the geometry of the model's representation space $\mathcal{H}$. The user can therefore deduce that the concept is unlikely to be salient to interpret $\mathcal{H}$. In that sense, the inability to fit CAR classifiers that generalize well is as informative as the ability to fit CAR classifiers that generalize well. Note that this whole reasoning is made more quantitative through statistical hypothesis testing in Section 3.1.1 of our paper.
 
 
 ## 2. Layer Selection
@@ -94,10 +97,12 @@ result than the penultimate layer. Moreover, how does one choose the layer to ap
 note:TCAV does not work well with the penultimate layer since d c/d activation = W_c (which is independent to the instance),
 and thus for all instances in the same class the directional derivative to the same concept would be fixed.**
 
-Argue that the best layer is in principle the one where the CAR classifiers generalizes the best
-on a holdout concept set. Redo the CAR experiment by using Mixed-7b. Results:
+We would like to emphasize our CAR formalism, the user is free to to choose the layer they want to interpret. In many use cases, the user might want to interpret specific layers of the neural network based on their knowledge of the architecture. In creating TCAR explanations for various layers, we decided to select the layer for which the concept classifiers (for both CAR and CAV) generalize better to unseen examples, as measured in our experiment from Section 3.1.1 from our paper.
 
-$r(\mathrm{TCAV}, \mathrm{TrueProp}) = .46$ and $r(\mathrm{TCAR}, \mathrm{TrueProp}) = .71$
+Following the reviewer's recommendation, we decided to repeat the comparison beween TCAV and TCAR from Section 3.1.2 with the layer Mixed-7b of our Inception-V3 classifier. In doing so, we measured the following correlation between the scores and the groundtruth proportion of examples within a class that exhibit the concept:
+
+$$r(\mathrm{TCAV}, \mathrm{TrueProp}) = .46 \hspace{2cm} r(\mathrm{TCAR}, \mathrm{TrueProp}) = .71$$
+For both TCAV and TCAR, these correlations are lower than the ones obtained in the model's penultimate layer. In this case, it appears that the association between classes and concepts are more meaningfully encoded in the deeper layers of the neural network. We believe that the machine learning community would greatly benefit from the ability to perform this type of analysis for various architectures.
 
 ## 3. Discrepancy between CAV and TCAV Accuracy
 **In the inception experiment, CAV has a pretty close accuracy to CAR
@@ -106,11 +111,15 @@ but the evaluation of TCAV score in table 1 seems completely wrong.
 The failure of TCAV in MNIST and ECG is understandable since the model seems under-represented,
 and an additional kernel classifier would help a lot. However, the result in Inception-v3 is not convincing.**
 
-Double check our results. CAV accuracy describes how accurate a linear classifier is to separate concept positives
-and negatives in the model's representation space. TCAV scores, to be accurate, need an extra dimension:
-the concept need to appropriately be associated to predicted labels. It is perfectly possible to have accurate
-separation of the concept positive/negative in a model's representation space without having this concept-to-class
-association. Point at Inception examples in the supplementary material (complete by giving the accuracy of the selected concepts).
+We would like to thank the reviewer for pointing this out. After double checking our implementation, everything seems consistent and we are confident about the results reported in our paper. We would like to emphasize that the accuracy of a CAV concept classifier does not guarantee that TCAV score correlates well with the ground-truth association between classes and concepts. This can be understood in the following way:
+
+* A highly accurate CAV classifier occurs when the concept sets are linearly separable in the model's representation space $\mathcal{H}$. This means that the feature extractor $g : \mathcal{X} \rightarrow \mathcal{H}$ tends to linearly separate examples that exhibit the concept from the ones that don't.
+* A high correlation between the TCAV score and the ground-truth association between classes and concept occurs when the model prediction for each class is sensitive to the presence of the appropriate concepts. This means that for each class $k \in [d_Y]$, the label map $l_k : \mathcal{H} \rightarrow [0, 1]$ is sensitive to concepts $c \in [C]$ that are truly relevant to identify this class (e.g. MNIST images of digit 9 are sensitive to the loop concept).
+
+From the above discussion, we immediately notice that the two previous situations depend on two orthogonal parts of the model: the accuracy of the CAV classifier depends on the feature extractor $g$ and the correlation of the TCAV score with ground-truth depends on the label map $l$. In that light, these two situations appear independent from each other: it is perfectly possible to have highly accurate CAV classifiers and poor TCAV scores if concepts are well separated in the model's representation space $\mathcal{H}$ but the model's predictions are not sensitive to the right concepts. We note that this is precisely what occurs in the CUB setting, as we can observe from Figures 5.c in the main paper and Figure 15 in the supplementary material. In these figures, we observe that TCAV suggests non-existent associations, such as one between the class *black crow* and the concept *yellow wing colour*.  
+
+A possible explanation for the better agreement between the quality of CAR classifiers and TCAR scores is the fact that, unlike TCAV, TCAR scores are not computed by using the sensitivity metric $S^c_k$ defined in Section 2.1 of the paper. As explained in Section 2.2, we use the concept activation regions *directly* to compute TCAR scores. This implies that TCAR scores are computed in the model's representation space $\mathcal{H}$ *directly* by analyzing how different classes are scattered across the concept clusters. We believe that this different characterization might explain the gap between TCAV and TCAR scores in terms of correlation with the ground-truth. This would suggest that TCAV's sensitivity $S^c_k$ might not be the most appropriate way to detect the association between a class and a concept. We will make sure to add this discussion in the manuscript.
+
 
 ## 4. Feature Importance Evaluation
 **The evaluation of concept-based feature importance is only a sanity check, how is this useful?**
@@ -154,13 +163,22 @@ Copy and adapt the robustness point from reviewer f9CQ.
 ## 4. CAR for NLP
 **Would CAR work for other domains like NLP?**
 
-Small NLP experiment as for Reviewer f9CQ.
+CAR is a general framework and can be used in a wide variety of domains that involve neural networks. In our paper, we show that CAR provides explanations for various modalities:
+1. Large image dataset
+2. Medical time series
+3. Medical tabular data.
+
+As suggested by the reviewer, we perform a small experiment to assess if those conclusions extend to the NLP setting. We train a small CNN on the IMDB Review dataset to predict whether a review is positive or negative. We use Glove to turn the word tokens into embeddings. We would like to assess whether the concept $c = \mathrm{Positive \ Adjective}$ is encoded in the model's representations.
+Examples that exhibit the concept $c$ are sentences containing positive adjectives. We collect a positive set $\mathcal{P}^c$ of $N^c = 90$ such sentences. The negative set $\mathcal{N}^c$ is made of $N^c$ sentences randomly sampled from the Gutenberg Poem Dataset. We verified that the sentences from $\mathcal{N}^c$ did not contain positive adjectives. We then fit a CAR classifier on the representations obtained in the penultimate layer of the CNN.
+
+ We assess the generalization performance of the CAR classifier on a holdout concept set made of $N^c = 30$ concept positive and negative sentences (60 sentences in total). The CAR classifier has an accuracy of $87 \%$ on this holdout dataset. This suggests that the concept $c$ is smoothly encoded in the model's representation space, which is consistent with the importance of positive adjectives to identify positive reviews. We deduce that our CAR formalism can be used in a NLP setting. We believe that using CAR to analyze large-scale language model would be an interesting study that we leave for future work.  
+
 
 ## 5. Using CAR without Human Annotations
 **Is it possible to relax the assumption that such a class of techniques requires additional annotation of concepts?
 As of now, CAR requires a user to specify the positive and negative examples for each concept.**
 
-This could probably be merged with Point 2 above. Note that human concepts need to be defined by humans.
+Discuss the work by Ghorbani.
 
 
 ## 6. Minor Points
@@ -175,11 +193,9 @@ We will make sure that to implement those changes in the final manuscript.
 # Experiments TODO
 
 * DONE *Small* Kernel width optimization
-* *Medium* CUB with ResNet
+* DONE *Medium* CUB with ResNet
 * DONE *Small* CUB TCAR/TCAV and Acc with mixed-7b layer
-* *Large* NLP Experiment
+* DONE *Large* NLP Experiment
 * DONE *Small* Robustness to adversarial attacks
 * DONE *Medium* CUB with background shift
 * *?* CAR and unsupervised concepts?
-* *?* CAR Sensitivity?
-* *?* Training regularization?

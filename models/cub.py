@@ -394,5 +394,5 @@ class CUBResNet(nn.Module):
 
     def get_hooked_modules(self) -> dict[str, nn.Module]:
         return {
-            "Layer3": self.base_model.layer3, "Layer4": self.base_model.layer4
+            "Layer4": self.base_model.layer4
                }
