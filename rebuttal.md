@@ -1,14 +1,18 @@
 # Reviewer f9CQ
 
-## 1. Analysis with SOTA Architecture
+## 1. Analysis with ResNet Architecture
 **The paper considers mostly convolutional networks. It lacks analysis of more state-of-the art
 architectures like residual networks or transformers.**
 
-Redo CUB with a ResNet. Put results here when available
+As suggested by the reviewer, we extended our analysis to a ResNet-50 architecture.
+We fine-tuned the ResNet model on the CUB dataset and reproduced the experiment fro Section 3.1.1 of our paper with this new architecture. In particular, we fit a CAR and a CAV classifier on the penultimate layer of the ResNet. We report the accuracy averaged  over the $C = 112$
+CUB concepts bellow.
 
-| Layer   |   CAR Accuracy  (mean $\pm$ sem) |   CAV Accuracy (mean $\pm$ sem) |  
-|:--------|------------------:|------------------:|
+| ResNet Layer   |   CAR Accuracy  (mean $\pm$ sem) |   CAV Accuracy (mean $\pm$ sem) |  
+|:--------|:------------------:|:------------------:|
 | Layer4  |          .89 $\pm$ .01  |          .87 $\pm$ .01  |
+
+As we can see, CAR classifiers are highly accurate to identify concepts in the pnultimate ResNet layers. As in our paper, we observe that CAR classifiers outperform CAV classifiers, although the gap is smaller than for the Inception-V3 neural network. We deduce that our CAR formalism extends beyond the architectures explored in the paper.
 
 Copy the NLP experiment from reviewer qiiw.
 
@@ -121,26 +125,25 @@ From the above discussion, we immediately notice that the two previous situation
 A possible explanation for the better agreement between the quality of CAR classifiers and TCAR scores is the fact that, unlike TCAV, TCAR scores are not computed by using the sensitivity metric $S^c_k$ defined in Section 2.1 of the paper. As explained in Section 2.2, we use the concept activation regions *directly* to compute TCAR scores. This implies that TCAR scores are computed in the model's representation space $\mathcal{H}$ *directly* by analyzing how different classes are scattered across the concept clusters. We believe that this different characterization might explain the gap between TCAV and TCAR scores in terms of correlation with the ground-truth. This would suggest that TCAV's sensitivity $S^c_k$ might not be the most appropriate way to detect the association between a class and a concept. We will make sure to add this discussion in the manuscript.
 
 
-## 4. Feature Importance Evaluation
+## 4. Significance of Feature Importance Evaluation
 **The evaluation of concept-based feature importance is only a sanity check, how is this useful?**
 
-The experiment is in the same spirit as the one to validate TCAR scores: we would like to assess
-whether TCAR leads to explanations that are consistent with what humans would expect.
-This does not only validate TCAR as an explanation method but the model itself. The difficulty in the experiment is the following:
-since the ground-truth concept-specific concept importance is unknown, we cannot assess the feature importance
-directly (per image concept-level segmentations are unavailable in the datasets). Even if the ground-truth feature
-importance is unknown, it is legitimate to expect that concepts that are identified with the same features
-should lead to similar feature importance scores. Quantitatively, this translates into a high
-correlation between the respective concept feature importance scores. Write this a bit more mathematically.
+We believe that our consistency checks for concept-based feature importance demonstrate two crucial and non-trivial points on various datasets:
+
+1. **Concept-based saliency maps are not generic.** The low correlation between vanilla saliency maps and concept-based saliency maps indicates that the latter are concept-specific. This is consistent with the fact that the features that are salient to identify a concept are not necessarily the same as the ones that are salient to make a prediction.
+2. **Concept-based saliency maps are consistent with human intuition.** The correlation between the saliency maps of each pair of concept $(c_1, c_2)$ appears to be important when $c_1$ and $c_2$ can be identified through the same input features (e.g. the *loop* and the *curvature* concepts in MNIST are both identified through pixels in the curved part of the digit). This is a way to confront our concept-based saliency maps with the ground-truth human knowledge, in the same spirit as the assessment of global explanations in Section 3.1.2. We note that the former are more difficult in practice since no concept-specific ground-truth saliency map is available for the investigated dataset. This is why we use correlation to verify that saliency maps correlations are consistent with the human characterization of those concepts.  
+
+
 
 # Reviewer qiiw
 
 ## 1. Generalizing CAV Sensitivity Interpretations
 **One of the critical weaknesses of CAR is that since explanations are generated through a Kernel-based technique,
 it loses the nice interpretations CAV offers, like if one increases the presence of a concept,
-how does it affect the model predictions. Would it be possible to replicate the interpretations CAV offers like concept senstivity?
+how does it affect the model predictions. Would it be possible to replicate the interpretations CAV offers like concept sensitivity?
 An alternate would be to perform test time interventions on the Kernel-based Concept classifier.**
 
+We thank the reviewer for suggesting this interesting extension. In our formalism, it is perfectly possible to define a *local* concept activation vector through the concept density $\rho^c : \mathcal{H} \rightarrow \mathbb{R}^+$ defined in Definition 2.1 from the main paper.
 Explain that the concept density can be seen as our equivalent of the CAV concept sensitivity.
 If this density is high, this implies that the example lies within a cluster of concept positives.
 Proposition to generalize sensitivity:
@@ -158,6 +161,14 @@ Otherwise, focus on the latent variables discovered by any unsupervised model re
 **How robust are explanations generated by CAR? Is it robust to change in backgrounds of the images?**
 
 Copy and adapt the robustness point from reviewer f9CQ.
+
+|         $r(\rho^c , \theta_s)$       |      Loop  |   Vertical Line |   Horizontal Line |   Curvature |
+|:---------------|----------:|----------------:|------------------:|------------:|
+| **SENN Concept 1** | -0.278976 |      -0.119755  |         0.257565  |  0.108905   |
+| **SENN Concept 2** | -0.499061 |       0.707177  |        -0.0249706 | -0.692438   |
+| **SENN Concept 3** | -0.472226 |       0.101666  |         0.711515  | -0.140781   |
+| **SENN Concept 4** | -0.330611 |       0.0152665 |        -0.0578889 | -0.00641264 |
+| **SENN Concept 5** |  0.572431 |      -0.0527576 |        -0.625491  |  0.0666983  |
 
 
 ## 4. CAR for NLP

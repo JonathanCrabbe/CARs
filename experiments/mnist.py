@@ -7,7 +7,7 @@ import numpy as np
 import os
 import pandas as pd
 from pathlib import Path
-from models.mnist import ClassifierMnist
+from models.mnist import ClassifierMnist, init_trainer, get_dataloader
 from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader, TensorDataset
 from torchvision import transforms
@@ -23,6 +23,8 @@ from sklearn.metrics import accuracy_score
 from sklearn.gaussian_process.kernels import Matern
 from tqdm import tqdm
 from utils.robustness import Attacker
+from scipy.stats import spearmanr
+
 
 concept_to_class = {"Loop": [0, 2, 6, 8, 9],  "Vertical Line": [1, 4, 7],
                     "Horizontal Line": [4, 5, 7], "Curvature": [0, 2, 3, 5, 6, 8, 9]}
@@ -593,6 +595,47 @@ def adversarial_robustness(random_seed: int, batch_size: int, latent_dim: int,
     logging.info(results_md)
 
 
+def senn() -> None:
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    logging.info("Now fitting SENN model")
+    senn_trainer = init_trainer(str(Path.cwd()/"configs/senn_config.json"))
+    senn_trainer.run()
+    senn_trainer.load_checkpoint(str(Path.cwd()/"results/mnist/senn/checkpoints/best_model.pt"))
+    senn = senn_trainer.model
+    senn.eval()
+    senn_concept_relevance = senn.parameterizer
+    senn_representation = senn.conceptizer.encode
+
+    logging.info("Now tuning CAR concept densities")
+    data_dir = Path.cwd() / "data/mnist"
+    car_classifiers = {concept_name: CAR(device) for concept_name in concept_to_class}
+    for concept_name in concept_to_class:
+        logging.info(f"Tunning {concept_name}")
+        X_train, c_train = generate_mnist_concept_dataset(concept_to_class[concept_name], data_dir, True, 300, 1)
+        H_train = senn_representation(torch.from_numpy(X_train).to(senn_trainer.config.device)).flatten(start_dim=1).detach().cpu().numpy()
+        car_classifiers[concept_name].tune_kernel_width(H_train, c_train)
+
+    logging.info("Now computing concept relevance and densities")
+    _, _, test_loader = get_dataloader(senn_trainer.config)
+    human_concept_importances = []
+    synthetic_concept_relevances = []
+    for X_test, y_test in test_loader:
+        H_test = senn_representation(X_test.to(senn_trainer.config.device)).flatten(start_dim=1).detach()
+        C_importance = [car_classifiers[concept_name].concept_importance(H_test).view(-1, 1).cpu().numpy() for concept_name in concept_to_class]
+        C_importance = np.concatenate(C_importance, axis=1)
+        human_concept_importances.append(C_importance)
+        C_relevance = senn_concept_relevance(X_test.to(senn_trainer.config.device)).detach()
+        class_select = y_test.to(senn_trainer.config.device).view(-1, 1, 1).repeat(1, 5, 1)
+        C_relevance = torch.gather(C_relevance, -1, index=class_select).flatten(start_dim=1).cpu().numpy()
+        synthetic_concept_relevances.append(C_relevance)
+    human_concept_importances = np.concatenate(human_concept_importances, axis=0)
+    synthetic_concept_relevances = np.concatenate(synthetic_concept_relevances, axis=0)
+    corr_data = np.corrcoef(human_concept_importances, synthetic_concept_relevances, rowvar=False)[4:, :4]
+    corr_df = pd.DataFrame(data=corr_data, columns=list(concept_to_class.keys()), index=[f"SENN Concept {i+1}" for i in range(5)])
+    logging.info(corr_df.to_markdown())
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -628,6 +671,8 @@ if __name__ == "__main__":
         tcar_inter_concept(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
     elif args.name == "adversarial_robustness":
         adversarial_robustness(args.seeds[0], args.batch_size, args.latent_dim, model_name=model_name)
+    elif args.name == "senn":
+        senn()
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 
