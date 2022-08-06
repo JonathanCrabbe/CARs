@@ -18,7 +18,7 @@ CUB concepts bellow:
 |:--------|:------------------:|:------------------:|
 | Layer4  |          .89 $\pm$ .01  |          .87 $\pm$ .01  |
 
-As we can see, CAR classifiers are highly accurate to identify concepts in the penultimate ResNet layer. As in our paper, we observe that CAR classifiers outperform CAV classifiers, although the gap is smaller than for the Inception-V3 neural network. We deduce that our CAR formalism extends beyond the architectures explored in the paper.
+As we can see, CAR classifiers are highly accurate to identify concepts in the penultimate ResNet layer. As in our paper, we observe that CAR classifiers outperform CAV classifiers, although the gap is smaller than for the Inception-V3 neural network. We deduce that our CAR formalism extends beyond the architectures explored in the paper and we hope that CAR will become widely used to interpret anby more architectures.
 
 
 ## 2. Increasing Explainability at Training Time
@@ -30,7 +30,7 @@ In order to improve the explainability of those shallow layers, one could levera
 
 $$ \mathcal{L}^c_{\mathrm{cont}} = \sum_{(x_i,x_j) \in (\mathcal{P}^c)^2} -\log \frac{\exp( \tau^{-1} \cdot\cos[p \circ g (x_i), p \circ g (x_j)])}{\sum_{x_k \in (\mathcal{P}^c \cup \mathcal{N}^c) \setminus \{ x_i \}} \exp(\tau^{-1} \cdot\cos[p \circ g (x_i), p \circ g (x_k)])},$$
 
-where $\cos(z_1, z_2) \equiv \frac{z_1^{\intercal}z_2}{\| z_1 \|_2 \cdot \| z_2 \|_2}$ and $\tau \in \mathbb{R}^+$ is a temperature parameter. The effect of this loss is to group the concept positive examples from $\mathcal{P}^c$ together and appart from the concept negatives $\mathcal{N}^c$ in the representation space $\mathcal{H}$. To the best of our knowledge, concept-based contrastive learning has not been explored in the literature. We believe that it would constitute an interesting contribution to the field based on the insights from our paper.
+where $\cos(z_1, z_2) \equiv \frac{z_1^{\intercal}z_2}{\| z_1 \|_2 \cdot \| z_2 \|_2}$ and $\tau \in \mathbb{R}^+$ is a temperature parameter. The effect of this loss is to group the concept positive examples from $\mathcal{P}^c$ together and apart from the concept negatives $\mathcal{N}^c$ in the representation space $\mathcal{H}$. To the best of our knowledge, concept-based contrastive learning has not been explored in the literature. We believe that it would constitute an interesting contribution to the field based on the insights from our paper. For this reason, we added this discussion in Appendix H of the revised manuscript.
 
 # Reviewer f9CQ [2/2]
 
@@ -94,7 +94,7 @@ into training concept sets $\mathcal{P}^c_{\mathrm{train}}, \mathcal{N}^c_{\math
 3. For the current value $\theta_h$ of the hyperparameters, fit a model $s^c_{\kappa}$ to discriminate
 the training concept sets $\mathcal{P}^c_{\mathrm{train}}, \mathcal{N}^c_{\mathrm{train}}$.
 4. Measure the accuracy $\mathrm{ACC}_{\mathrm{val}} = \frac{\sum_{x \in \mathcal{P}^c_{\mathrm{val}}} \boldsymbol{1}(s^c_{\kappa}\circ \ g(x)=1) \ + \
- \sum_{x \in \mathcal{N}^c_{\mathrm{val}}} \boldsymbol{1}(s^c_{\kappa}\circ \ g(x)=0)}{|\mathcal{P}^c_{\mathrm{val}} \ \cup \ \mathcal{N}^c_{\mathrm{val}}|}$
+ \sum_{x \in \mathcal{N}^c_{\mathrm{val}}} \boldsymbol{1}(s^c_{\kappa}\circ \ g(x)=0)}{|\mathcal{P}^c_{\mathrm{val}} \ \cup \ \mathcal{N}^c_{\mathrm{val}}|}$.
 5. Update the current hyperparameters $\theta_h$ based on $\mathrm{ACC}_{\mathrm{val}}$
 using Bayesian optimization (Optuna in our case).
 6. Repeat 3-5 for a predetermined number of trials.
@@ -103,7 +103,7 @@ We applied this process to the CAR accuracy experiment (same setup as in Section
 with respect to the CAR classifiers reported in the main paper: tuned and standard CAR classifier have an average accuracy of $(93 \pm .2) \%$ for the penultimate Inception layer.
 This suggests that the accuracy of CAR classifiers is not heavily dependant on hyperparameters
 in this case. That said, we believe that the above approach to tune the hyperparameters
-of CAR classifiers might be useful in other cases, hence it will be added to the manuscript.
+of CAR classifiers might be useful in other cases, hence it has been added in Appendix A of the revised manuscript.
 
 We agree that not all concepts can be captured by CAR classifiers, even after hyperparameter
 optimization (e.g. Figure 4.c from the paper, we see that CAR classifiers don't generalize well on the layer Mixed-5d). As we argue in the paper, this is a strong indication that our concept
@@ -164,7 +164,7 @@ We thank the reviewer for suggesting this interesting extension. In our formalis
 
 $$S^c_k(x) \equiv (\nabla_{h} \rho^c [g(x)])^{\intercal} (\nabla_{h} l_k [g(x)]).$$
 
-In this way, all the interpretation provided by the CAV formalism are also available in the CAR formalism. We will make sure to add this discussion in the manuscript.
+In this way, all the interpretation provided by the CAV formalism are also available in the CAR formalism. This discussion has been added in Appendix B of the manuscript.
 
 ## 2. Using CAR with Unsupervised Concepts
 
