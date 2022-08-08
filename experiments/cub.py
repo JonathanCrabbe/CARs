@@ -202,6 +202,7 @@ def global_explanations(random_seed: int, batch_size: int, plot: bool,
         H_train = np.concatenate(H_train)
         car_classifier.fit(H_train, y_train)
         cav_classifier.fit(H_train, y_train)
+        car_classifier.tune_kernel_width(H_train, y_train)
 
     test_loader = load_cub_data([test_path], True, False, batch_size, image_dir=img_dir)
     logging.info("Now predicting concepts on the test set")
@@ -210,9 +211,12 @@ def global_explanations(random_seed: int, batch_size: int, plot: bool,
         car_preds = [car.predict(H_test) for car in car_classifiers]
         cav_preds = [cav.concept_importance(H_test, y_test, 200, model.representation_to_output)
                      for cav in cav_classifiers]
-
+        car_sensitivity_preds = [car.concept_sensitivity_importance(H_test, y_test, 200, model.representation_to_output)
+                                 for car in car_classifiers]
         results_data += [["TCAR", class_names[label]] + [int(car_pred[idx]) for car_pred in car_preds]
                          for idx, label in enumerate(y_test)]
+        results_data += [["TCAR Sensitivity", class_names[label]] + [int(car_sensitivity_pred[idx] > 0)
+                         for car_sensitivity_pred in car_sensitivity_preds] for idx, label in enumerate(y_test)]
         results_data += [["TCAV", class_names[label]] + [int(cav_pred[idx] > 0) for cav_pred in cav_preds]
                          for idx, label in enumerate(y_test)]
         results_data += [["True Prop.", class_names[label]] + [concept_labels[concept_id][idx].item() for concept_id in range(len(concept_names))]

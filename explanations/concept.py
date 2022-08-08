@@ -83,7 +83,7 @@ class ConceptExplainer(ABC):
 
 
 class CAR(ConceptExplainer, ABC):
-    def __init__(self, device: torch.device, batch_size: int = 50, kernel: str = 'rbf', kernel_width: float = None):
+    def __init__(self, device: torch.device, batch_size: int = 100, kernel: str = 'rbf', kernel_width: float = None):
         super(CAR, self).__init__(device, batch_size)
         self.kernel = kernel
         self.kernel_width = kernel_width
@@ -187,7 +187,10 @@ class CAR(ConceptExplainer, ABC):
         def train_acc(trial):
             kernel_width = trial.suggest_float("kernel_width", .1, 50)
             self.kernel_width = kernel_width
-            density = self.concept_importance(torch.from_numpy(concept_reps)).cpu().numpy()
+            density = []
+            for reps_batch in np.split(concept_reps, self.batch_size):
+                density.append(self.concept_importance(torch.from_numpy(reps_batch)).cpu().numpy())
+            density = np.concatenate(density)
             return accuracy_score((density > 0).astype(int), concept_labels)
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -224,6 +227,32 @@ class CAR(ConceptExplainer, ABC):
         self.classifier.fit(concept_reps, concept_labels)
         self.kernel_width = best_params['gamma']
         logging.info(f"Optimal hyperparameters {best_params} with validation accuracy {study.best_value:.2g}")
+
+    def concept_sensitivity_importance(self, latent_reps: np.ndarray, labels: torch.Tensor = None,
+                                       num_classes: int = None, rep_to_output: callable = None) -> np.ndarray:
+        """
+        Compute the concept sensitivity of a set of predictions
+        Args:
+            latent_reps: representations of the test examples
+            labels: the labels associated to the representations one-hot encoded
+            num_classes: the number of classes
+            rep_to_output: black-box mapping the representation space to the output space
+        Returns:
+            concepts scores for each example
+        """
+        one_hot_labels = F.one_hot(labels, num_classes).to(self.device)
+        latent_reps = torch.from_numpy(latent_reps).to(self.device).requires_grad_()
+        outputs = rep_to_output(latent_reps)
+        grads = torch.autograd.grad(outputs, latent_reps, grad_outputs=one_hot_labels)[0]
+
+        densities = self.concept_importance(latent_reps).view((-1, 1))
+        cavs = torch.autograd.grad(densities, latent_reps, grad_outputs=torch.ones((len(densities), 1)).to(self.device))[0]
+
+        if len(grads.shape) > 2:
+            grads = grads.flatten(start_dim=1)
+        if len(cavs.shape) > 2:
+            cavs = cavs.flatten(start_dim=1)
+        return torch.einsum("bi,bi->b", cavs, grads).detach().cpu().numpy()
 
 
 class CAV(ConceptExplainer, ABC):
