@@ -46,11 +46,12 @@ def plot_global_explanation(results_dir: Path, dataset_name: str, concept_catego
         plot_data.append([method, class_idx, concept, score])
     plot_df = pd.DataFrame(plot_data, columns=["Method", "Class", "Concept", "Score"])
     tcar_scores = plot_df.loc[plot_df.Method == "TCAR"]["Score"]
-    tcar_sensitivity_scores = plot_df.loc[plot_df.Method == "TCAR Sensitivity"]["Score"]
     tcav_scores = plot_df.loc[plot_df.Method == "TCAV"]["Score"]
     true_scores = plot_df.loc[plot_df.Method == "True Prop."]["Score"]
     logging.info(f"TCAR-True Prop. Correlation: {np.corrcoef(tcar_scores, true_scores)[0, 1]:.2g}")
-    logging.info(f"TCAR_Sensitivity-True Prop. Correlation: {np.corrcoef(tcar_sensitivity_scores, true_scores)[0, 1]:.2g}")
+    if "TCAR Sensitivity" in methods:
+        tcar_sensitivity_scores = plot_df.loc[plot_df.Method == "TCAR Sensitivity"]["Score"]
+        logging.info(f"TCAR_Sensitivity-True Prop. Correlation: {np.corrcoef(tcar_sensitivity_scores, true_scores)[0, 1]:.2g}")
     logging.info(f"TCAV-True Prop. Correlation: {np.corrcoef(tcav_scores, true_scores)[0, 1]:.2g}")
     if concept_categories is not None:
         for class_idx, concept_category in itertools.product(classes, concept_categories):
