@@ -104,23 +104,6 @@ def plot_seer_global_explanation(results_dir: Path) -> None:
     plt.close()
 
 
-def plot_perturbation_sensitivity(results_dir: Path, concept: str, dataset_name: str) -> None:
-    sns.set(font_scale=1)
-    sns.color_palette("colorblind")
-    sns.set_style("white")
-    metrics_df = pd.read_csv(results_dir/"metrics.csv")
-    if concept:
-        metrics_df = metrics_df[metrics_df.Concept == concept]
-    sns.lineplot(data=metrics_df, x="Perturbed Features", y="Concept Shift", hue="Method")
-    if concept:
-        plt.ylabel(f"Concept {concept} Perturbation Sensitivity")
-        plt.savefig(results_dir/f"{dataset_name}_{concept}_pert_sensitivity.pdf")
-    else:
-        plt.ylabel(f"Overall Perturbation Sensitivity")
-        plt.savefig(results_dir / f"{dataset_name}_pert_sensitivity.pdf")
-    plt.close()
-
-
 def plot_attribution_correlation(results_dir: Path, dataset_name: str, filtered_concepts: list = None,
                                  show_ticks: bool = True) -> None:
     sns.set(font_scale=.8)
@@ -224,89 +207,6 @@ def plot_seer_feature_importance(results_dir: Path) -> None:
     wrap_labels(ax, 8)
     plt.tight_layout()
     plt.savefig(results_dir/"seer_feature_importance.pdf")
-    plt.close()
-
-
-def plot_modulation_impact(results_dir: Path, dataset_name: str) -> None:
-    sns.set(font_scale=1.2)
-    sns.color_palette("colorblind")
-    sns.set_style("white")
-    metrics_df = pd.read_csv(results_dir/"metrics.csv")
-    ax = sns.displot(metrics_df, x="Concept Shift", hue="Method", fill=True, kde=True)
-    plt.savefig(results_dir/f"{dataset_name}_concept_shift.pdf")
-    plt.close()
-    ax = sns.displot(metrics_df, x="Modulation Norm", hue="Method", fill=True, kde=True)
-    plt.savefig(results_dir / f"{dataset_name}_modulation_norm.pdf")
-    plt.close()
-
-
-def plot_counterfactual_images(factuals: torch.Tensor, counterfactuals: list[np.ndarray], plot_indices: list[int],
-                               results_dir: Path, dataset_name: str, concept_name: str) -> None:
-    sns.set(font_scale=1.0)
-    sns.color_palette("colorblind")
-    sns.set_style("white")
-    n_plots = len(plot_indices)
-    n_cols = len(counterfactuals) + 1
-    fig, axs = plt.subplots(ncols=n_cols, nrows=n_plots, figsize=(2*n_cols, 2*n_plots))
-    for ax_id, example_id in enumerate(plot_indices):
-        factual_image = factuals[example_id].cpu().numpy().astype(float)
-        if len(factual_image.shape) == 3:
-            factual_image = np.transpose(factual_image, (1, 2, 0))
-            factual_image = (factual_image - np.min(factual_image))/np.ptp(factual_image)
-        ax = axs[ax_id, 0]
-        ax.imshow(factual_image, cmap='gray')
-        ax.axis('off')
-        ax.set_title('Original')
-        ax = axs[ax_id, 1]
-        counterfactual_image = counterfactuals[0][example_id].squeeze()
-        if len(counterfactual_image.shape) == 3:
-            counterfactual_image = np.transpose(counterfactual_image, (1, 2, 0))
-            counterfactual_image = (counterfactual_image - np.min(counterfactual_image))/np.ptp(counterfactual_image)
-        ax.imshow(counterfactual_image, cmap='gray')
-        ax.axis('off')
-        ax.set_title('CAR Modulated')
-        ax = axs[ax_id, 2]
-        counterfactual_image = counterfactuals[1][example_id].squeeze()
-        if len(counterfactual_image.shape) == 3:
-            counterfactual_image = np.transpose(counterfactual_image, (1, 2, 0))
-            counterfactual_image = (counterfactual_image - np.min(counterfactual_image)) / np.ptp(counterfactual_image)
-        ax.imshow(counterfactual_image, cmap='gray')
-        ax.axis('off')
-        ax.set_title('CAV Modulated')
-    plt.tight_layout()
-    plt.savefig(results_dir/f"{dataset_name}_{concept_name}_counterfactual.pdf")
-    plt.close()
-
-
-def plot_counterfactual_series(factuals: torch.Tensor, counterfactuals: list[np.ndarray], plot_indices: list[int],
-                               results_dir: Path, dataset_name: str, concept_name: str) -> None:
-    sns.set(font_scale=1.2)
-    sns.color_palette("colorblind")
-    sns.set_style("white")
-    n_plots = len(plot_indices)
-    n_cols = len(counterfactuals) + 1
-    fig, axs = plt.subplots(ncols=n_cols, nrows=n_plots, figsize=(4*n_cols, 2*n_plots))
-    for ax_id, example_id in enumerate(plot_indices):
-        factual_series = factuals[example_id].cpu().numpy().astype(float).squeeze()
-        ax = axs[ax_id, 0]
-        sns.lineplot(x=list(range(len(factual_series))), y=factual_series, ax=ax)
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Voltage")
-        ax.set_title('Original')
-        ax = axs[ax_id, 1]
-        counterfactual_series = counterfactuals[0][example_id].squeeze()
-        sns.lineplot(x=list(range(len(counterfactual_series))), y=counterfactual_series, ax=ax)
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Voltage")
-        ax.set_title('CAR Modulated')
-        ax = axs[ax_id, 2]
-        counterfactual_series = counterfactuals[1][example_id].squeeze()
-        sns.lineplot(x=list(range(len(counterfactual_series))), y=counterfactual_series, ax=ax)
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Voltage")
-        ax.set_title('CAV Modulated')
-    plt.tight_layout()
-    plt.savefig(results_dir/f"{dataset_name}_{concept_name}_counterfactual.pdf")
     plt.close()
 
 
@@ -426,8 +326,6 @@ if __name__ == "__main__":
             plot_attribution_correlation(save_path, args.dataset)
         else:
             plot_seer_feature_importance(save_path)
-    elif args.name == "concept_modulation":
-        plot_modulation_impact(save_path, args.dataset)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")
 

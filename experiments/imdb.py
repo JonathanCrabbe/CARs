@@ -9,6 +9,10 @@ from explanations.concept import CAR
 import torch.nn as nn
 import torch.nn.functional as F
 
+"""
+Code adapted from https://captum.ai/tutorials/TCAV_NLP 
+"""
+
 
 class CNN(nn.Module):
     def __init__(self, vocab_size, embedding_dim, n_filters, filter_sizes, output_dim,

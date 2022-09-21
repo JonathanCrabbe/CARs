@@ -6,16 +6,15 @@ import itertools
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 from utils.dataset import ECGDataset, generate_ecg_concept_dataset
 from models.ecg import ClassifierECG
 from utils.hooks import register_hooks, get_saved_representations, remove_all_hooks
-from utils.metrics import concept_impact, modulation_norm
 from explanations.concept import CAR, CAV
-from explanations.feature import CARFeatureImportance, VanillaFeatureImportance, CARModulator, CAVModulator
+from explanations.feature import CARFeatureImportance, VanillaFeatureImportance
 from sklearn.metrics import accuracy_score
 from utils.plot import (plot_concept_accuracy, plot_global_explanation, plot_attribution_correlation,
-                        plot_time_series_saliency, plot_counterfactual_series, plot_modulation_impact)
+                        plot_time_series_saliency)
 from tqdm import tqdm
 
 concept_to_class = {"Supraventricular": 1, "Premature Ventricular": 2, "Fusion Beats": 3, "Unknown": 4}
@@ -227,7 +226,7 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
         X_train, y_train = generate_ecg_concept_dataset(concept_to_class[concept_name], data_dir,
                                                         True, 200, random_seed)
         H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
-        #car.fit(H_train, y_train)
+        car.fit(H_train, y_train)
         car.tune_kernel_width(H_train, y_train)
         logging.info(f"Now computing feature importance on the test set for {concept_name}")
         concept_attribution_method = CARFeatureImportance("Integrated Gradient", car, model, device)
@@ -253,68 +252,6 @@ def feature_importance(random_seed: int, batch_size: int, latent_dim: int,  plot
                                       save_dir, f"ecg_set{set_id}", "vanilla")
 
 
-def concept_modulation(random_seed: int, batch_size: int, latent_dim: int,  plot: bool,
-                       save_dir: Path = Path.cwd()/"results/ecg/concept_modulation",
-                       data_dir: Path = Path.cwd()/"data/ecg",
-                       model_dir: Path = Path.cwd() / f"results/ecg",
-                       model_name: str = "model") -> None:
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    torch.manual_seed(random_seed)
-
-    if not save_dir.exists():
-        os.makedirs(save_dir)
-
-    model_dir = model_dir/model_name
-    model = ClassifierECG(latent_dim, model_name)
-    model.load_state_dict(torch.load(model_dir / f"{model_name}.pt"), strict=False)
-    model.to(device)
-    model.eval()
-
-    # Fit a concept classifier and compute feature importance for each concept
-    car_classifiers = [CAR(device) for _ in concept_to_class]
-    cav_classifiers = [CAV(device) for _ in concept_to_class]
-    test_set = ECGDataset(data_dir, train=False, balance_dataset=False, binarize_label=False)
-    #test_set = torch.utils.data.Subset(test_set, list(range(200)))
-    test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=False)
-    results_data = []
-    for concept_name, car, cav in zip(concept_to_class, car_classifiers, cav_classifiers):
-        logging.info(f"Now fitting concept classifier for {concept_name}")
-        X_train, y_train = generate_ecg_concept_dataset(concept_to_class[concept_name], data_dir,
-                                                          True, 200, random_seed)
-        H_train = model.input_to_representation(torch.from_numpy(X_train).to(device)).detach().cpu().numpy()
-        car.fit(H_train, y_train)
-        cav.fit(H_train, y_train)
-        car_modulator = CARModulator(car, model, device)
-        cav_modulator = CAVModulator(cav, model, device)
-        logging.info(f"Now modulating the test set for {concept_name} with CAR")
-        car_modulated_series = car_modulator.generate(test_loader, 1000, 10)
-        logging.info(f"Now modulating the test set for {concept_name} with CAV")
-        cav_modulated_series = cav_modulator.generate(test_loader, 1000)
-        car_modulated_loader = DataLoader(TensorDataset(car_modulated_series), batch_size, shuffle=False)
-        cav_modulated_loader = DataLoader(TensorDataset(cav_modulated_series), batch_size, shuffle=False)
-        car_impacts = concept_impact(test_loader, car_modulated_loader, model, car, device)
-        cav_impacts = concept_impact(test_loader, cav_modulated_loader, model, car, device)
-        car_distances = modulation_norm(test_loader, car_modulated_loader, device)
-        cav_distances = modulation_norm(test_loader, cav_modulated_loader, device)
-        results_data += [[concept_name, "CAR", car_impact, car_distance]
-                         for car_impact, car_distance in zip(car_impacts, car_distances)]
-        results_data += [[concept_name, "CAV", cav_impact, cav_distance]
-                         for cav_impact, cav_distance in zip(cav_impacts, cav_distances)]
-        if plot:
-            modulated_series = [car_modulated_series.numpy(), cav_modulated_series.numpy()]
-            logging.info(f"Saving plots in {save_dir} for {concept_name}")
-            X_test = test_set.X
-            plot_idx = [torch.nonzero(test_set.y == (n % 5))[n // 5].item() for n in range(100)]
-            for set_id in range(1, 5):
-                plot_counterfactual_series(X_test, modulated_series, plot_idx[set_id*5:(set_id+1)*5],
-                                           save_dir, f"ecg_set{set_id}", concept_name)
-    results_df = pd.DataFrame(results_data, columns=["Concept", "Method", "Concept Shift", "Modulation Norm"])
-    results_df.to_csv(save_dir / "metrics.csv")
-    if plot:
-        logging.info(f"Saving plots in {save_dir}")
-        plot_modulation_impact(save_dir, "ecg")
-
-
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -336,7 +273,5 @@ if __name__ == "__main__":
         statistical_significance(args.seeds[0], args.latent_dim, model_name=model_name)
     elif args.name == "feature_importance":
         feature_importance(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
-    elif args.name == 'concept_modulation':
-        concept_modulation(args.seeds[0], args.batch_size, args.latent_dim, args.plot, model_name=model_name)
     else:
         raise ValueError(f"{args.name} is not a valid experiment name")

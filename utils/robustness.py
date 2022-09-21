@@ -49,10 +49,8 @@ def mask_image(file_path, out_dir_name, remove_bkgnd=True):
     im = np.array(Image.open(file_path).convert('RGB'))
     segment_path = file_path.replace('images', 'segmentations').replace('.jpg', '.png')
     segment_im = np.array(Image.open(segment_path).convert('L'))
-    #segment_im = np.tile(segment_im, (3,1,1)) #3 x W x H
-    #segment_im = np.moveaxis(segment_im, 0, -1) #W x H x 3
     mask = segment_im.astype(float)/255
-    if not remove_bkgnd: #remove bird in the foreground instead
+    if not remove_bkgnd:  # remove bird in the foreground instead
         mask = 1 - mask
     new_im = (im * mask[:, :, None]).astype(np.uint8)
     Image.fromarray(new_im).save(file_path.replace('/images/', out_dir_name))
@@ -267,7 +265,6 @@ if __name__ == '__main__':
             img_test.save(full_test_path)
 
     # Save fixed class/image metadata
-    # TODO: Should probably record individual places images too
     fixed_dir = os.path.join(args.out_dir, args.fixed_dirname)
     with open(os.path.join(fixed_dir, 'train_places.json'), 'w') as f:
         json.dump(s2p_train, f, sort_keys=True, indent=4)

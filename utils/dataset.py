@@ -14,15 +14,10 @@ from torch.utils.data import DataLoader, Dataset, BatchSampler
 from pathlib import Path
 from abc import ABC
 from imblearn.over_sampling import SMOTE, RandomOverSampler
-from imblearn.under_sampling import RandomUnderSampler
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
-from typing import Tuple
-import seaborn as sns
-import matplotlib.pyplot as plt
-
 
 
 """
@@ -126,7 +121,6 @@ class CUBDataset(Dataset):
             idx = img_path.split('/').index('CUB_200_2011')
             if self.image_dir != 'images':
                 img_path = '/'.join([self.image_dir] + img_path.split('/')[idx + 1:])
-                # img_path = img_path.replace('images/', '')
             else:
                 img_path = '/'.join(img_path.split('/')[idx:])
             img = Image.open(img_path).convert('RGB')
@@ -165,7 +159,6 @@ class CUBDataset(Dataset):
             idx = img_path.split('/').index('CUB_200_2011')
             if self.image_dir != 'images':
                 img_path = '/'.join([self.image_dir] + img_path.split('/')[idx + 1:])
-                # img_path = img_path.replace('images/', '')
             else:
                 img_path = '/'.join(img_path.split('/')[idx:])
             img = Image.open(img_path).convert('RGB')
@@ -517,21 +510,16 @@ def load_cub_data(pkl_paths, use_attr, no_img, batch_size, uncertain_label=False
     is_training = any(['train.pkl' in f for f in pkl_paths])
     if is_training:
         transform = transforms.Compose([
-            # transforms.Resize((resized_resol, resized_resol)),
-            # transforms.RandomSizedCrop(resol),
             transforms.ColorJitter(brightness=32 / 255, saturation=(0.5, 1.5)),
             transforms.RandomResizedCrop(resol),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),  # implicitly divides by 255
-            # transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
     else:
         transform = transforms.Compose([
             transforms.Resize((resized_resol, resized_resol)),
-            #transforms.CenterCrop(resol), BEFORE UNCOM
             transforms.ToTensor(),  # implicitly divides by 255
-            # transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 

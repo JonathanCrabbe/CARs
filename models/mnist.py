@@ -15,7 +15,7 @@ from utils.metrics import AverageMeter
 from abc import abstractmethod
 from os import path
 from types import SimpleNamespace
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 
 BEST_MODEL_FILENAME = "best_model.pt"
@@ -718,7 +718,6 @@ class SENN_Trainer:
         # Init model
         self.model = SENN(conceptizer, parameterizer, aggregator)
         self.model.to(config.device)
-        #self.summarize()
 
         # Init optimizer
         self.opt = opt.Adam(self.model.parameters(), lr=config.lr)

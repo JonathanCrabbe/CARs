@@ -5,10 +5,9 @@ import logging
 import pandas as pd
 import numpy as np
 from utils.dataset import SEERDataset, generate_seer_concept_dataset
-from utils.metrics import evaluate_concept_accuracy
 from models.seer import SEERClassifier
 from pathlib import Path
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import DataLoader
 from utils.plot import plot_seer_global_explanation, plot_seer_feature_importance
 from explanations.concept import CAR, CAV
 from explanations.feature import CARFeatureImportance
@@ -48,7 +47,6 @@ def concept_accuracy(random_seed: int, batch_size: int, latent_dim: int, model_n
     # Load data
     train_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, train=True, test_fraction=test_fraction, load_concept_labels=True)
     test_data = SEERDataset(str(data_dir / "seer.csv"), random_seed, train=False, test_fraction=test_fraction, load_concept_labels=True)
-    test_loader = DataLoader(test_data, batch_size)
 
     # Load model
     model_dir = model_dir / model_name
@@ -73,8 +71,6 @@ def concept_accuracy(random_seed: int, batch_size: int, latent_dim: int, model_n
         H_test = model.input_to_representation(X_test).detach().cpu().numpy()
         results_data.append([f"Grade {concept_id + 1}", "CAR", accuracy_score(C_test, car.predict(H_test))])
         results_data.append([f"Grade {concept_id + 1}", "CAV", accuracy_score(C_test, cav.predict(H_test))])
-        #results_data.append([f"Grade {concept_id+1}", "CAR", evaluate_concept_accuracy(test_loader, car, concept_id, device, model)])
-        #results_data.append([f"Grade {concept_id+1}", "CAV", evaluate_concept_accuracy(test_loader, cav, concept_id, device, model)])
     results_df = pd.DataFrame(results_data, columns=["Concept", "Method", "Test ACC"])
     logging.info(f"Saving results in {save_dir}")
     results_df.to_csv(save_dir/"metrics.csv")
