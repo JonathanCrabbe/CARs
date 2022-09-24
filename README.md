@@ -188,8 +188,16 @@ The resulting plots and data are saved [here](results/seer).
 If you use this code, please cite the associated paper:
 
 ```
-
-
+@misc{https://doi.org/10.48550/arxiv.2209.11222,
+  doi = {10.48550/ARXIV.2209.11222},
+  url = {https://arxiv.org/abs/2209.11222},
+  author = {Crabbé, Jonathan and van der Schaar, Mihaela},
+  keywords = {Machine Learning (cs.LG), Artificial Intelligence (cs.AI), FOS: Computer and information sciences, FOS: Computer and information sciences},
+  title = {Concept Activation Regions: A Generalized Framework For Concept-Based Explanations},
+  publisher = {arXiv},
+  year = {2022},
+  copyright = {Creative Commons Attribution 4.0 International}
+}
 ```
 
 
