@@ -100,7 +100,7 @@ The experiment_name parameter can take the following values:
 | feature_importance       | Consistency check for  feature importance (paper Section 3.1.3)   |
 | kernel_sensitivity       | Kernel sensitivity experiment (paper Appendix A)                  |
 | concept_size_impact      | Impact of concept set size (paper Appendix A)                     |
-| tcar_inter_concept       | Intersection between concepts (paper Appendix B)                  |
+| tcar_inter_concepts       | Intersection between concepts (paper Appendix B)                  |
 | adversarial_robustness   | Robustness w.r.t. adversarial perturbation (paper Appendix G)     |
 | senn                     | Experiment with self-explaining neural network (paper Appendix H) |
 
