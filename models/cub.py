@@ -133,8 +133,12 @@ class CUBClassifier(nn.Module):
         # N x 2048
         return self.fc(h)
 
-    def train_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader,
-                    optimizer: torch.optim.Optimizer) -> np.ndarray:
+    def train_epoch(
+        self,
+        device: torch.device,
+        dataloader: torch.utils.data.DataLoader,
+        optimizer: torch.optim.Optimizer,
+    ) -> np.ndarray:
         """
         One epoch of the training loop
         Args:
@@ -162,7 +166,9 @@ class CUBClassifier(nn.Module):
             train_loss.append(loss.detach().cpu().numpy())
         return np.mean(train_loss)
 
-    def test_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader) -> tuple:
+    def test_epoch(
+        self, device: torch.device, dataloader: torch.utils.data.DataLoader
+    ) -> tuple:
         """
         One epoch of the testing loop
         Args:
@@ -183,14 +189,25 @@ class CUBClassifier(nn.Module):
                 loss = self.criterion(pred_batch, label_batch)
                 test_loss.append(loss.cpu().numpy())
                 test_acc.append(
-                    torch.count_nonzero(label_batch == torch.argmax(pred_batch, dim=-1)).cpu().numpy() / len(label_batch)
+                    torch.count_nonzero(label_batch == torch.argmax(pred_batch, dim=-1))
+                    .cpu()
+                    .numpy()
+                    / len(label_batch)
                 )
 
         return np.mean(test_loss), np.mean(test_acc)
 
-    def fit(self, device: torch.device, train_loader: torch.utils.data.DataLoader,
-            test_loader: torch.utils.data.DataLoader, save_dir: pathlib.Path,
-            lr: int = 1e-03, n_epoch: int = 50, patience: int = 50, checkpoint_interval: int = -1) -> None:
+    def fit(
+        self,
+        device: torch.device,
+        train_loader: torch.utils.data.DataLoader,
+        test_loader: torch.utils.data.DataLoader,
+        save_dir: pathlib.Path,
+        lr: int = 1e-03,
+        n_epoch: int = 50,
+        patience: int = 50,
+        checkpoint_interval: int = -1,
+    ) -> None:
         """
         Fit the classifier on the training set
         Args:
@@ -207,22 +224,28 @@ class CUBClassifier(nn.Module):
 
         """
         self.to(device)
-        #optim = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=1e-05)
-        optim = torch.optim.SGD(self.parameters(), lr=lr, weight_decay=4e-05, momentum=.9)
+        # optim = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=1e-05)
+        optim = torch.optim.SGD(
+            self.parameters(), lr=lr, weight_decay=4e-05, momentum=0.9
+        )
         waiting_epoch = 0
         best_test_acc = 0
         for epoch in range(n_epoch):
             train_loss = self.train_epoch(device, train_loader, optim)
             test_loss, test_acc = self.test_epoch(device, test_loader)
-            logging.info(f'Epoch {epoch + 1}/{n_epoch} \t '
-                         f'Train Loss {train_loss:.3g} \t '
-                         f'Test Loss {test_loss:.3g} \t'
-                         f'Test Accuracy {test_acc * 100:.3g}% \t ')
+            logging.info(
+                f"Epoch {epoch + 1}/{n_epoch} \t "
+                f"Train Loss {train_loss:.3g} \t "
+                f"Test Loss {test_loss:.3g} \t"
+                f"Test Accuracy {test_acc * 100:.3g}% \t "
+            )
             if test_acc <= best_test_acc:
                 waiting_epoch += 1
-                logging.info(f'No improvement over the best epoch \t Patience {waiting_epoch} / {patience}')
+                logging.info(
+                    f"No improvement over the best epoch \t Patience {waiting_epoch} / {patience}"
+                )
             else:
-                logging.info(f'Saving the model in {save_dir}')
+                logging.info(f"Saving the model in {save_dir}")
                 self.cpu()
                 self.save(save_dir)
                 self.to(device)
@@ -230,12 +253,14 @@ class CUBClassifier(nn.Module):
                 waiting_epoch = 0
             if checkpoint_interval > 0 and epoch % checkpoint_interval == 0:
                 n_checkpoint = 1 + epoch // checkpoint_interval
-                logging.info(f'Saving checkpoint {n_checkpoint} in {save_dir}')
-                path_to_checkpoint = save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                logging.info(f"Saving checkpoint {n_checkpoint} in {save_dir}")
+                path_to_checkpoint = (
+                    save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                )
                 torch.save(self.state_dict(), path_to_checkpoint)
                 self.checkpoints_files.append(path_to_checkpoint)
             if waiting_epoch == patience:
-                logging.info(f'Early stopping activated')
+                logging.info(f"Early stopping activated")
                 break
 
     def save(self, directory: pathlib.Path) -> None:
@@ -251,10 +276,12 @@ class CUBClassifier(nn.Module):
 
     def get_hooked_modules(self) -> dict[str, nn.Module]:
         return {
-            "Mixed5d": self.inception.Mixed_5d, "Mixed6e": self.inception.Mixed_6e,
-            "Mixed7c": self.inception.Mixed_7c, "Mixed7b": self.inception.Mixed_7b,
-            "InceptionOut": self.inception.avgpool
-               }
+            "Mixed5d": self.inception.Mixed_5d,
+            "Mixed6e": self.inception.Mixed_6e,
+            "Mixed7c": self.inception.Mixed_7c,
+            "Mixed7b": self.inception.Mixed_7b,
+            "InceptionOut": self.inception.avgpool,
+        }
 
 
 class CUBResNet(nn.Module):
@@ -276,8 +303,12 @@ class CUBResNet(nn.Module):
     def representation_to_output(self, h):
         return self.base_model.fc(h)
 
-    def train_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader,
-                    optimizer: torch.optim.Optimizer) -> np.ndarray:
+    def train_epoch(
+        self,
+        device: torch.device,
+        dataloader: torch.utils.data.DataLoader,
+        optimizer: torch.optim.Optimizer,
+    ) -> np.ndarray:
         """
         One epoch of the training loop
         Args:
@@ -305,7 +336,9 @@ class CUBResNet(nn.Module):
             train_loss.append(loss.detach().cpu().numpy())
         return np.mean(train_loss)
 
-    def test_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader) -> tuple:
+    def test_epoch(
+        self, device: torch.device, dataloader: torch.utils.data.DataLoader
+    ) -> tuple:
         """
         One epoch of the testing loop
         Args:
@@ -326,14 +359,25 @@ class CUBResNet(nn.Module):
                 loss = self.criterion(pred_batch, label_batch)
                 test_loss.append(loss.cpu().numpy())
                 test_acc.append(
-                    torch.count_nonzero(label_batch == torch.argmax(pred_batch, dim=-1)).cpu().numpy() / len(label_batch)
+                    torch.count_nonzero(label_batch == torch.argmax(pred_batch, dim=-1))
+                    .cpu()
+                    .numpy()
+                    / len(label_batch)
                 )
 
         return np.mean(test_loss), np.mean(test_acc)
 
-    def fit(self, device: torch.device, train_loader: torch.utils.data.DataLoader,
-            test_loader: torch.utils.data.DataLoader, save_dir: pathlib.Path,
-            lr: int = 1e-03, n_epoch: int = 50, patience: int = 50, checkpoint_interval: int = -1) -> None:
+    def fit(
+        self,
+        device: torch.device,
+        train_loader: torch.utils.data.DataLoader,
+        test_loader: torch.utils.data.DataLoader,
+        save_dir: pathlib.Path,
+        lr: int = 1e-03,
+        n_epoch: int = 50,
+        patience: int = 50,
+        checkpoint_interval: int = -1,
+    ) -> None:
         """
         Fit the classifier on the training set
         Args:
@@ -350,22 +394,28 @@ class CUBResNet(nn.Module):
 
         """
         self.to(device)
-        #optim = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=1e-05)
-        optim = torch.optim.SGD(self.parameters(), lr=lr, weight_decay=4e-05, momentum=.9)
+        # optim = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=1e-05)
+        optim = torch.optim.SGD(
+            self.parameters(), lr=lr, weight_decay=4e-05, momentum=0.9
+        )
         waiting_epoch = 0
         best_test_acc = 0
         for epoch in range(n_epoch):
             train_loss = self.train_epoch(device, train_loader, optim)
             test_loss, test_acc = self.test_epoch(device, test_loader)
-            logging.info(f'Epoch {epoch + 1}/{n_epoch} \t '
-                         f'Train Loss {train_loss:.3g} \t '
-                         f'Test Loss {test_loss:.3g} \t'
-                         f'Test Accuracy {test_acc * 100:.3g}% \t ')
+            logging.info(
+                f"Epoch {epoch + 1}/{n_epoch} \t "
+                f"Train Loss {train_loss:.3g} \t "
+                f"Test Loss {test_loss:.3g} \t"
+                f"Test Accuracy {test_acc * 100:.3g}% \t "
+            )
             if test_acc <= best_test_acc:
                 waiting_epoch += 1
-                logging.info(f'No improvement over the best epoch \t Patience {waiting_epoch} / {patience}')
+                logging.info(
+                    f"No improvement over the best epoch \t Patience {waiting_epoch} / {patience}"
+                )
             else:
-                logging.info(f'Saving the model in {save_dir}')
+                logging.info(f"Saving the model in {save_dir}")
                 self.cpu()
                 self.save(save_dir)
                 self.to(device)
@@ -373,12 +423,14 @@ class CUBResNet(nn.Module):
                 waiting_epoch = 0
             if checkpoint_interval > 0 and epoch % checkpoint_interval == 0:
                 n_checkpoint = 1 + epoch // checkpoint_interval
-                logging.info(f'Saving checkpoint {n_checkpoint} in {save_dir}')
-                path_to_checkpoint = save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                logging.info(f"Saving checkpoint {n_checkpoint} in {save_dir}")
+                path_to_checkpoint = (
+                    save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                )
                 torch.save(self.state_dict(), path_to_checkpoint)
                 self.checkpoints_files.append(path_to_checkpoint)
             if waiting_epoch == patience:
-                logging.info(f'Early stopping activated')
+                logging.info(f"Early stopping activated")
                 break
 
     def save(self, directory: pathlib.Path) -> None:
@@ -393,6 +445,4 @@ class CUBResNet(nn.Module):
         torch.save(self.state_dict(), path_to_model)
 
     def get_hooked_modules(self) -> dict[str, nn.Module]:
-        return {
-            "Layer4": self.base_model.layer4
-               }
+        return {"Layer4": self.base_model.layer4}

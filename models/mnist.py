@@ -27,15 +27,19 @@ class ClassifierMnist(nn.Module):
         self.latent_dim = latent_dim
         self.name = name
         self.checkpoints_files = []
-        self.cnn1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=5, stride=1, padding=0)
-        self.cnn2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=5, stride=1, padding=0)
+        self.cnn1 = nn.Conv2d(
+            in_channels=1, out_channels=16, kernel_size=5, stride=1, padding=0
+        )
+        self.cnn2 = nn.Conv2d(
+            in_channels=16, out_channels=32, kernel_size=5, stride=1, padding=0
+        )
         self.relu = nn.ReLU()
         self.maxpool1 = nn.MaxPool2d(2, 2)
         self.maxpool2 = nn.MaxPool2d(2, 2)
         self.dropout = nn.Dropout(p=0.2)
         self.dropout2d = nn.Dropout2d(p=0.2)
-        self.fc1 = nn.Linear(32 * 4 * 4, 2*self.latent_dim)
-        self.fc2 = nn.Linear(2*self.latent_dim, self.latent_dim)
+        self.fc1 = nn.Linear(32 * 4 * 4, 2 * self.latent_dim)
+        self.fc2 = nn.Linear(2 * self.latent_dim, self.latent_dim)
         self.out = nn.Linear(self.latent_dim, 10)
         self.criterion = nn.CrossEntropyLoss()
 
@@ -76,8 +80,12 @@ class ClassifierMnist(nn.Module):
         h = self.out(h)
         return h
 
-    def train_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader,
-                    optimizer: torch.optim.Optimizer) -> np.ndarray:
+    def train_epoch(
+        self,
+        device: torch.device,
+        dataloader: torch.utils.data.DataLoader,
+        optimizer: torch.optim.Optimizer,
+    ) -> np.ndarray:
         """
         One epoch of the training loop
         Args:
@@ -105,7 +113,9 @@ class ClassifierMnist(nn.Module):
             train_loss.append(loss.detach().cpu().numpy())
         return np.mean(train_loss)
 
-    def test_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader) -> tuple:
+    def test_epoch(
+        self, device: torch.device, dataloader: torch.utils.data.DataLoader
+    ) -> tuple:
         """
         One epoch of the testing loop
         Args:
@@ -126,14 +136,25 @@ class ClassifierMnist(nn.Module):
                 loss = self.criterion(pred_batch, label_batch)
                 test_loss.append(loss.cpu().numpy())
                 test_acc.append(
-                    torch.count_nonzero(label_batch == torch.argmax(pred_batch, dim=-1)).cpu().numpy()/len(label_batch)
-                                )
+                    torch.count_nonzero(label_batch == torch.argmax(pred_batch, dim=-1))
+                    .cpu()
+                    .numpy()
+                    / len(label_batch)
+                )
 
         return np.mean(test_loss), np.mean(test_acc)
 
-    def fit(self, device: torch.device, train_loader: torch.utils.data.DataLoader,
-            test_loader: torch.utils.data.DataLoader, save_dir: pathlib.Path,
-            lr: int = 1e-03, n_epoch: int = 50, patience: int = 10, checkpoint_interval: int = -1) -> None:
+    def fit(
+        self,
+        device: torch.device,
+        train_loader: torch.utils.data.DataLoader,
+        test_loader: torch.utils.data.DataLoader,
+        save_dir: pathlib.Path,
+        lr: int = 1e-03,
+        n_epoch: int = 50,
+        patience: int = 10,
+        checkpoint_interval: int = -1,
+    ) -> None:
         """
         Fit the classifier on the training set
         Args:
@@ -156,15 +177,19 @@ class ClassifierMnist(nn.Module):
         for epoch in range(n_epoch):
             train_loss = self.train_epoch(device, train_loader, optim)
             test_loss, test_acc = self.test_epoch(device, test_loader)
-            logging.info(f'Epoch {epoch + 1}/{n_epoch} \t '
-                         f'Train Loss {train_loss:.3g} \t '
-                         f'Test Loss {test_loss:.3g} \t'
-                         f'Test Accuracy {test_acc * 100:.3g}% \t ')
+            logging.info(
+                f"Epoch {epoch + 1}/{n_epoch} \t "
+                f"Train Loss {train_loss:.3g} \t "
+                f"Test Loss {test_loss:.3g} \t"
+                f"Test Accuracy {test_acc * 100:.3g}% \t "
+            )
             if test_loss >= best_test_loss:
                 waiting_epoch += 1
-                logging.info(f'No improvement over the best epoch \t Patience {waiting_epoch} / {patience}')
+                logging.info(
+                    f"No improvement over the best epoch \t Patience {waiting_epoch} / {patience}"
+                )
             else:
-                logging.info(f'Saving the model in {save_dir}')
+                logging.info(f"Saving the model in {save_dir}")
                 self.cpu()
                 self.save(save_dir)
                 self.to(device)
@@ -172,12 +197,14 @@ class ClassifierMnist(nn.Module):
                 waiting_epoch = 0
             if checkpoint_interval > 0 and epoch % checkpoint_interval == 0:
                 n_checkpoint = 1 + epoch // checkpoint_interval
-                logging.info(f'Saving checkpoint {n_checkpoint} in {save_dir}')
-                path_to_checkpoint = save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                logging.info(f"Saving checkpoint {n_checkpoint} in {save_dir}")
+                path_to_checkpoint = (
+                    save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                )
                 torch.save(self.state_dict(), path_to_checkpoint)
                 self.checkpoints_files.append(path_to_checkpoint)
             if waiting_epoch == patience:
-                logging.info(f'Early stopping activated')
+                logging.info(f"Early stopping activated")
                 break
 
     def save(self, directory: pathlib.Path) -> None:
@@ -215,14 +242,21 @@ class ClassifierMnist(nn.Module):
             Additional arguments to `json.dump`
         """
         path_to_metadata = directory / (self.name + ".json")
-        metadata = {"latent_dim": self.latent_dim,
-                    "name": self.name,
-                    "checkpoint_files": self.checkpoints_files}
-        with open(path_to_metadata, 'w') as f:
+        metadata = {
+            "latent_dim": self.latent_dim,
+            "name": self.name,
+            "checkpoint_files": self.checkpoints_files,
+        }
+        with open(path_to_metadata, "w") as f:
             json.dump(metadata, f, indent=4, sort_keys=True, **kwargs)
 
     def get_hooked_modules(self) -> dict[str, nn.Module]:
-        return {"Conv1": self.maxpool1, "Conv2": self.maxpool2, "Lin1": self.fc1, "Lin2": self.fc2}
+        return {
+            "Conv1": self.maxpool1,
+            "Conv2": self.maxpool2,
+            "Lin1": self.fc1,
+            "Lin2": self.fc2,
+        }
 
 
 class SENN(nn.Module):
@@ -290,8 +324,7 @@ class SENN(nn.Module):
 
 class SumAggregator(nn.Module):
     def __init__(self, num_classes, **kwargs):
-        """Basic Sum Aggregator that joins the concepts and relevances by summing their products.
-        """
+        """Basic Sum Aggregator that joins the concepts and relevances by summing their products."""
         super().__init__()
         self.num_classes = num_classes
 
@@ -369,10 +402,23 @@ class Conceptizer(nn.Module):
 
 
 class ConvConceptizer(Conceptizer):
-    def __init__(self, image_size, num_concepts, concept_dim, image_channels=1, encoder_channels=(10,),
-                 decoder_channels=(16, 8), kernel_size_conv=5, kernel_size_upsample=(5, 5, 2),
-                 stride_conv=1, stride_pool=2, stride_upsample=(2, 1, 2),
-                 padding_conv=0, padding_upsample=(0, 0, 1), **kwargs):
+    def __init__(
+        self,
+        image_size,
+        num_concepts,
+        concept_dim,
+        image_channels=1,
+        encoder_channels=(10,),
+        decoder_channels=(16, 8),
+        kernel_size_conv=5,
+        kernel_size_upsample=(5, 5, 2),
+        stride_conv=1,
+        stride_pool=2,
+        stride_upsample=(2, 1, 2),
+        padding_conv=0,
+        padding_upsample=(0, 0, 1),
+        **kwargs,
+    ):
         """
         CNN Autoencoder used to learn the concepts, present in an input image
         Parameters
@@ -419,7 +465,9 @@ class ConvConceptizer(Conceptizer):
 
         # Decoder params
         decoder_channels = (num_concepts,) + decoder_channels
-        kernel_size_upsample = handle_integer_input(kernel_size_upsample, len(decoder_channels))
+        kernel_size_upsample = handle_integer_input(
+            kernel_size_upsample, len(decoder_channels)
+        )
         stride_upsample = handle_integer_input(stride_upsample, len(decoder_channels))
         padding_upsample = handle_integer_input(padding_upsample, len(decoder_channels))
         decoder_channels += (image_channels,)
@@ -427,31 +475,45 @@ class ConvConceptizer(Conceptizer):
         # Encoder implementation
         self.encoder = nn.ModuleList()
         for i in range(len(encoder_channels) - 1):
-            self.encoder.append(self.conv_block(in_channels=encoder_channels[i],
-                                                out_channels=encoder_channels[i + 1],
-                                                kernel_size=kernel_size_conv[i],
-                                                stride_conv=stride_conv[i],
-                                                stride_pool=stride_pool[i],
-                                                padding=padding_conv[i]))
-            self.dout = (self.dout - kernel_size_conv[i] + 2 * padding_conv[i] + stride_conv[i] * stride_pool[i]) // (
-                    stride_conv[i] * stride_pool[i])
+            self.encoder.append(
+                self.conv_block(
+                    in_channels=encoder_channels[i],
+                    out_channels=encoder_channels[i + 1],
+                    kernel_size=kernel_size_conv[i],
+                    stride_conv=stride_conv[i],
+                    stride_pool=stride_pool[i],
+                    padding=padding_conv[i],
+                )
+            )
+            self.dout = (
+                self.dout
+                - kernel_size_conv[i]
+                + 2 * padding_conv[i]
+                + stride_conv[i] * stride_pool[i]
+            ) // (stride_conv[i] * stride_pool[i])
 
         if self.filter and concept_dim == 1:
-            self.encoder.append(ScalarMapping((self.num_concepts, self.dout, self.dout)))
+            self.encoder.append(
+                ScalarMapping((self.num_concepts, self.dout, self.dout))
+            )
         else:
             self.encoder.append(Flatten())
-            self.encoder.append(nn.Linear(self.dout ** 2, concept_dim))
+            self.encoder.append(nn.Linear(self.dout**2, concept_dim))
 
         # Decoder implementation
-        self.unlinear = nn.Linear(concept_dim, self.dout ** 2)
+        self.unlinear = nn.Linear(concept_dim, self.dout**2)
         self.decoder = nn.ModuleList()
         decoder = []
         for i in range(len(decoder_channels) - 1):
-            decoder.append(self.upsample_block(in_channels=decoder_channels[i],
-                                               out_channels=decoder_channels[i + 1],
-                                               kernel_size=kernel_size_upsample[i],
-                                               stride_deconv=stride_upsample[i],
-                                               padding=padding_upsample[i]))
+            decoder.append(
+                self.upsample_block(
+                    in_channels=decoder_channels[i],
+                    out_channels=decoder_channels[i + 1],
+                    kernel_size=kernel_size_upsample[i],
+                    stride_deconv=stride_upsample[i],
+                    padding=padding_upsample[i],
+                )
+            )
             decoder.append(nn.ReLU(inplace=True))
         decoder.pop()
         decoder.append(nn.Tanh())
@@ -493,7 +555,9 @@ class ConvConceptizer(Conceptizer):
             reconst = module(reconst)
         return reconst
 
-    def conv_block(self, in_channels, out_channels, kernel_size, stride_conv, stride_pool, padding):
+    def conv_block(
+        self, in_channels, out_channels, kernel_size, stride_conv, stride_pool, padding
+    ):
         """
         A helper function that constructs a convolution block with pooling and activation
         Parameters
@@ -516,18 +580,21 @@ class ConvConceptizer(Conceptizer):
             a sequence of convolutional, pooling and activation modules
         """
         return nn.Sequential(
-            nn.Conv2d(in_channels=in_channels,
-                      out_channels=out_channels,
-                      kernel_size=kernel_size,
-                      stride=stride_conv,
-                      padding=padding),
+            nn.Conv2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride_conv,
+                padding=padding,
+            ),
             # nn.BatchNorm2d(out_channels),
-            nn.MaxPool2d(kernel_size=stride_pool,
-                         padding=padding),
-            nn.ReLU(inplace=True)
+            nn.MaxPool2d(kernel_size=stride_pool, padding=padding),
+            nn.ReLU(inplace=True),
         )
 
-    def upsample_block(self, in_channels, out_channels, kernel_size, stride_deconv, padding):
+    def upsample_block(
+        self, in_channels, out_channels, kernel_size, stride_deconv, padding
+    ):
         """
         A helper function that constructs an upsampling block with activations
         Parameters
@@ -548,11 +615,13 @@ class ConvConceptizer(Conceptizer):
             a sequence of deconvolutional and activation modules
         """
         return nn.Sequential(
-            nn.ConvTranspose2d(in_channels=in_channels,
-                               out_channels=out_channels,
-                               kernel_size=kernel_size,
-                               stride=stride_deconv,
-                               padding=padding),
+            nn.ConvTranspose2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=stride_deconv,
+                padding=padding,
+            ),
         )
 
 
@@ -608,8 +677,16 @@ class ScalarMapping(nn.Module):
 
 
 class ConvParameterizer(nn.Module):
-    def __init__(self, num_concepts, num_classes, cl_sizes=(1, 10, 20), kernel_size=5, hidden_sizes=(10, 5, 5, 10), dropout=0.5,
-                 **kwargs):
+    def __init__(
+        self,
+        num_concepts,
+        num_classes,
+        cl_sizes=(1, 10, 20),
+        kernel_size=5,
+        hidden_sizes=(10, 5, 5, 10),
+        dropout=0.5,
+        **kwargs,
+    ):
         """Parameterizer for MNIST dataset.
         Consists of convolutional as well as fully connected modules.
         Parameters
@@ -707,7 +784,9 @@ class SENN_Trainer:
             parameterizer = eval(config.parameterizer)(**config.__dict__)
             aggregator = eval(config.aggregator)(**config.__dict__)
         except:
-            logging.info("Please make sure you specify the correct Conceptizer, Parameterizer and Aggregator classes")
+            logging.info(
+                "Please make sure you specify the correct Conceptizer, Parameterizer and Aggregator classes"
+            )
             exit(-1)
 
         # Define losses
@@ -728,9 +807,9 @@ class SENN_Trainer:
         self.best_accuracy = 0
 
         # directories for saving results
-        RESULTS_DIR = pathlib.Path.cwd()/"results/mnist/senn"
-        CHECKPOINT_DIR = pathlib.Path.cwd()/"results/mnist/senn/checkpoints"
-        LOG_DIR = pathlib.Path.cwd()/"results/mnist/senn/log"
+        RESULTS_DIR = pathlib.Path.cwd() / "results/mnist/senn"
+        CHECKPOINT_DIR = pathlib.Path.cwd() / "results/mnist/senn/checkpoints"
+        LOG_DIR = pathlib.Path.cwd() / "results/mnist/senn/log"
 
         self.experiment_dir = path.join(RESULTS_DIR, config.exp_name)
         self.checkpoint_dir = path.join(self.experiment_dir, CHECKPOINT_DIR)
@@ -739,7 +818,6 @@ class SENN_Trainer:
         os.makedirs(self.experiment_dir, exist_ok=True)
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         os.makedirs(self.log_dir, exist_ok=True)
-
 
         if hasattr(config, "load_checkpoint"):
             self.load_checkpoint(config.load_checkpoint)
@@ -784,11 +862,15 @@ class SENN_Trainer:
 
             classification_loss = self.classification_loss(y_pred.squeeze(-1), labels)
             robustness_loss = self.robustness_loss(x, y_pred, concepts, relevances)
-            concept_loss = self.concept_loss(x, x_reconstructed, concepts, self.config.sparsity_reg)
+            concept_loss = self.concept_loss(
+                x, x_reconstructed, concepts, self.config.sparsity_reg
+            )
 
-            total_loss = classification_loss + \
-                         self.config.robust_reg * robustness_loss + \
-                         self.config.concept_reg * concept_loss
+            total_loss = (
+                classification_loss
+                + self.config.robust_reg * robustness_loss
+                + self.config.concept_reg * concept_loss
+            )
             total_loss.backward()
             self.opt.step()
 
@@ -797,27 +879,26 @@ class SENN_Trainer:
             # --- Report Training Progress --- #
             self.current_iter += 1
 
-
             if i % self.config.print_freq == 0:
                 logging.info(f"EPOCH:{epoch} STEP:{i}")
-                self.print_n_save_metrics(filename="accuracies_losses_train.csv",
-                                          total_loss=total_loss.item(),
-                                          classification_loss=classification_loss.item(),
-                                          robustness_loss=robustness_loss.item(),
-                                          concept_loss=concept_loss.item(),
-                                          accuracy=accuracy)
+                self.print_n_save_metrics(
+                    filename="accuracies_losses_train.csv",
+                    total_loss=total_loss.item(),
+                    classification_loss=classification_loss.item(),
+                    robustness_loss=robustness_loss.item(),
+                    concept_loss=concept_loss.item(),
+                    accuracy=accuracy,
+                )
 
             if self.current_iter % self.config.eval_freq == 0:
                 self.validate()
 
     def validate(self):
-        """Get the metrics for the validation set
-        """
+        """Get the metrics for the validation set"""
         return self.get_metrics(validate=True)
 
     def test(self):
-        """Get the metrics for the test set
-        """
+        """Get the metrics for the test set"""
         return self.get_metrics(validate=False)
 
     def get_metrics(self, validate=True):
@@ -848,14 +929,22 @@ class SENN_Trainer:
                 # run x through SENN
                 y_pred, (concepts, _), x_reconstructed = self.model(x)
 
-                classification_loss = self.classification_loss(y_pred.squeeze(-1), labels)
+                classification_loss = self.classification_loss(
+                    y_pred.squeeze(-1), labels
+                )
                 # robustness_loss = self.robustness_loss(x, y_pred, concepts, relevances)
-                robustness_loss = torch.tensor(0.0)  # jacobian cannot be computed with no_grad enabled
-                concept_loss = self.concept_loss(x, x_reconstructed, concepts, self.config.sparsity_reg)
+                robustness_loss = torch.tensor(
+                    0.0
+                )  # jacobian cannot be computed with no_grad enabled
+                concept_loss = self.concept_loss(
+                    x, x_reconstructed, concepts, self.config.sparsity_reg
+                )
 
-                total_loss = classification_loss + \
-                             self.config.robust_reg * robustness_loss + \
-                             self.config.concept_reg * concept_loss
+                total_loss = (
+                    classification_loss
+                    + self.config.robust_reg * robustness_loss
+                    + self.config.concept_reg * concept_loss
+                )
 
                 accuracy = self.accuracy(y_pred, labels)
 
@@ -871,19 +960,24 @@ class SENN_Trainer:
             total_loss = np.mean(losses_val)
             accuracy = np.mean(accuracies_val)
 
-
             # --- Report statistics --- #
-            logging.info(f"\n\033[93m-------- {'Validation' if validate else 'Test'} --------")
-            self.print_n_save_metrics(filename=f"accuracies_losses_{'valid' if validate else 'test'}.csv",
-                                      total_loss=total_loss,
-                                      classification_loss=classification_loss,
-                                      robustness_loss=robustness_loss,
-                                      concept_loss=concept_loss,
-                                      accuracy=accuracy)
+            logging.info(
+                f"\n\033[93m-------- {'Validation' if validate else 'Test'} --------"
+            )
+            self.print_n_save_metrics(
+                filename=f"accuracies_losses_{'valid' if validate else 'test'}.csv",
+                total_loss=total_loss,
+                classification_loss=classification_loss,
+                robustness_loss=robustness_loss,
+                concept_loss=concept_loss,
+                accuracy=accuracy,
+            )
             logging.info("----------------------------\033[0m")
 
             if accuracy > self.best_accuracy and validate:
-                logging.info("\033[92mCongratulations! Saving a new best model...\033[00m")
+                logging.info(
+                    "\033[92mCongratulations! Saving a new best model...\033[00m"
+                )
                 self.best_accuracy = accuracy
                 self.save_checkpoint(BEST_MODEL_FILENAME)
 
@@ -923,11 +1017,11 @@ class SENN_Trainer:
             logging.info(f"Loading checkpoint...")
             checkpoint = torch.load(file_name, self.config.device)
 
-            self.current_epoch = checkpoint['epoch']
-            self.current_iter = checkpoint['iter']
-            self.best_accuracy = checkpoint['best_accuracy']
-            self.model.load_state_dict(checkpoint['model_state'])
-            self.opt.load_state_dict(checkpoint['optimizer'])
+            self.current_epoch = checkpoint["epoch"]
+            self.current_iter = checkpoint["iter"]
+            self.best_accuracy = checkpoint["best_accuracy"]
+            self.model.load_state_dict(checkpoint["model_state"])
+            self.opt.load_state_dict(checkpoint["optimizer"])
 
             logging.info(f"Checkpoint loaded successfully from '{file_name}'\n")
 
@@ -948,17 +1042,25 @@ class SENN_Trainer:
 
         file_name = path.join(self.checkpoint_dir, file_name)
         state = {
-            'epoch': self.current_epoch,
-            'iter': self.current_iter,
-            'best_accuracy': self.best_accuracy,
-            'model_state': self.model.state_dict(),
-            'optimizer': self.opt.state_dict(),
+            "epoch": self.current_epoch,
+            "iter": self.current_iter,
+            "best_accuracy": self.best_accuracy,
+            "model_state": self.model.state_dict(),
+            "optimizer": self.opt.state_dict(),
         }
         torch.save(state, file_name)
 
         logging.info(f"Checkpoint saved @ {file_name}\n")
 
-    def print_n_save_metrics(self, filename, total_loss, classification_loss, robustness_loss, concept_loss, accuracy):
+    def print_n_save_metrics(
+        self,
+        filename,
+        total_loss,
+        classification_loss,
+        robustness_loss,
+        concept_loss,
+        accuracy,
+    ):
         """Prints the losses to the console and saves them in a csv file
         Parameters
         ----------
@@ -975,24 +1077,41 @@ class SENN_Trainer:
         accuracy: float
             The value of the accuracy
         """
-        report = (f"Total Loss:{total_loss:.3f} \t"
-                  f"Classification Loss:{classification_loss:.3f} \t"
-                  f"Robustness Loss:{robustness_loss:.3f} \t"
-                  f"Concept Loss:{concept_loss:.3f} \t"
-                  f"Accuracy:{accuracy:.3f} \t")
+        report = (
+            f"Total Loss:{total_loss:.3f} \t"
+            f"Classification Loss:{classification_loss:.3f} \t"
+            f"Robustness Loss:{robustness_loss:.3f} \t"
+            f"Concept Loss:{concept_loss:.3f} \t"
+            f"Accuracy:{accuracy:.3f} \t"
+        )
         logging.info(report)
 
         filename = path.join(self.experiment_dir, filename)
         new_file = not os.path.exists(filename)
-        with open(filename, 'a') as metrics_file:
-            fieldnames = ['Accuracy', 'Loss', 'Classification_Loss', 'Robustness_Loss', 'Concept_Loss', 'Step']
+        with open(filename, "a") as metrics_file:
+            fieldnames = [
+                "Accuracy",
+                "Loss",
+                "Classification_Loss",
+                "Robustness_Loss",
+                "Concept_Loss",
+                "Step",
+            ]
             csv_writer = csv.DictWriter(metrics_file, fieldnames=fieldnames)
 
-            if new_file: csv_writer.writeheader()
+            if new_file:
+                csv_writer.writeheader()
 
-            csv_writer.writerow({'Accuracy': accuracy, 'Classification_Loss': classification_loss,
-                                 'Robustness_Loss': robustness_loss, 'Concept_Loss': concept_loss,
-                                 'Loss': total_loss, 'Step': self.current_iter})
+            csv_writer.writerow(
+                {
+                    "Accuracy": accuracy,
+                    "Classification_Loss": classification_loss,
+                    "Robustness_Loss": robustness_loss,
+                    "Concept_Loss": concept_loss,
+                    "Loss": total_loss,
+                    "Step": self.current_iter,
+                }
+            )
 
     def finalize(self):
         """Finalize all necessary operations before exiting training.
@@ -1003,8 +1122,7 @@ class SENN_Trainer:
         self.save_checkpoint()
 
     def summarize(self):
-        """Print summary of given model.
-        """
+        """Print summary of given model."""
         logging.info(self.model)
         train_params = sum(p.numel() for p in self.model.parameters())
         logging.info(f"Trainable Parameters: {train_params}\n")
@@ -1030,12 +1148,16 @@ def handle_integer_input(input, desired_len):
         return (input,) * desired_len
     elif type(input) is tuple:
         if len(input) != desired_len:
-            raise AssertionError("The sizes of the parameters for the CNN conceptizer do not match."
-                                 f"Expected '{desired_len}', but got '{len(input)}'")
+            raise AssertionError(
+                "The sizes of the parameters for the CNN conceptizer do not match."
+                f"Expected '{desired_len}', but got '{len(input)}'"
+            )
         else:
             return input
     else:
-        raise TypeError(f"Wrong type of the parameters. Expected tuple or int but got '{type(input)}'")
+        raise TypeError(
+            f"Wrong type of the parameters. Expected tuple or int but got '{type(input)}'"
+        )
 
 
 def get_dataloader(config):
@@ -1077,13 +1199,19 @@ def load_mnist(data_path, batch_size, num_workers=0, valid_size=0.1, **kwargs):
     test_loader
         Dataloader for testing set.
     """
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        #transforms.Normalize((0.1307,), (0.3081,))
-    ])
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            # transforms.Normalize((0.1307,), (0.3081,))
+        ]
+    )
 
-    train_set = datasets.MNIST(data_path, train=True, download=True, transform=transform)
-    test_set = datasets.MNIST(data_path, train=False, download=True, transform=transform)
+    train_set = datasets.MNIST(
+        data_path, train=True, download=True, transform=transform
+    )
+    test_set = datasets.MNIST(
+        data_path, train=False, download=True, transform=transform
+    )
 
     train_size = len(train_set)
     split = int(np.floor(valid_size * train_size))
@@ -1091,7 +1219,9 @@ def load_mnist(data_path, batch_size, num_workers=0, valid_size=0.1, **kwargs):
     train_sampler = SubsetRandomSampler(indices[split:])
     valid_sampler = SubsetRandomSampler(indices[:split])
 
-    dataloader_args = dict(batch_size=batch_size, num_workers=num_workers, drop_last=True)
+    dataloader_args = dict(
+        batch_size=batch_size, num_workers=num_workers, drop_last=True
+    )
     train_loader = DataLoader(train_set, sampler=train_sampler, **dataloader_args)
     valid_loader = DataLoader(train_set, sampler=valid_sampler, **dataloader_args)
     test_loader = DataLoader(test_set, shuffle=False, **dataloader_args)
@@ -1154,9 +1284,14 @@ def mnist_robustness_loss(x, aggregates, concepts, relevances):
     jacobians = []
     for i in range(num_classes):
         grad_tensor = torch.zeros(batch_size, num_classes).to(x.device)
-        grad_tensor[:, i] = 1.
-        j_yx = torch.autograd.grad(outputs=aggregates, inputs=x, \
-                                   grad_outputs=grad_tensor, create_graph=True, only_inputs=True)[0]
+        grad_tensor[:, i] = 1.0
+        j_yx = torch.autograd.grad(
+            outputs=aggregates,
+            inputs=x,
+            grad_outputs=grad_tensor,
+            create_graph=True,
+            only_inputs=True,
+        )[0]
         # bs x 1 x 28 x 28 -> bs x 784 x 1
         jacobians.append(j_yx.view(batch_size, -1).unsqueeze(-1))
     # bs x num_features x num_classes (bs x 784 x 10)
@@ -1166,9 +1301,14 @@ def mnist_robustness_loss(x, aggregates, concepts, relevances):
     jacobians = []
     for i in range(num_concepts):
         grad_tensor = torch.zeros(batch_size, num_concepts).to(x.device)
-        grad_tensor[:, i] = 1.
-        j_hx = torch.autograd.grad(outputs=concepts, inputs=x, \
-                                   grad_outputs=grad_tensor, create_graph=True, only_inputs=True)[0]
+        grad_tensor[:, i] = 1.0
+        j_hx = torch.autograd.grad(
+            outputs=concepts,
+            inputs=x,
+            grad_outputs=grad_tensor,
+            create_graph=True,
+            only_inputs=True,
+        )[0]
         # bs x 1 x 28 x 28 -> bs x 784 x 1
         jacobians.append(j_hx.view(batch_size, -1).unsqueeze(-1))
     # bs x num_features x num_concepts
@@ -1177,7 +1317,7 @@ def mnist_robustness_loss(x, aggregates, concepts, relevances):
     # bs x num_features x num_classes
     robustness_loss = J_yx - torch.bmm(J_hx, relevances)
 
-    return robustness_loss.norm(p='fro')
+    return robustness_loss.norm(p="fro")
 
 
 def init_trainer(config_file, best_model=False):
@@ -1193,7 +1333,7 @@ def init_trainer(config_file, best_model=False):
     trainer: SENN_Trainer
         Trainer for SENN or DiSENNTrainer for DiSENN
     """
-    with open(config_file, 'r') as f:
+    with open(config_file, "r") as f:
         config = json.load(f)
 
     if best_model:
