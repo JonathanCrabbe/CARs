@@ -5,7 +5,7 @@ Code Author: Jonathan Crabbé ([jc2133@cam.ac.uk](mailto:jc2133@cam.ac.uk))
 
 This repository contains the implementation of CARs, a framework to explain the latent
 representations of neural networks with the help of user-defined concepts.
-For more details, please read our [NeurIPS 2022 paper](): 'Concept Activation Regions: 
+For more details, please read our [NeurIPS 2022 paper](https://arxiv.org/abs/2209.11222): 'Concept Activation Regions: 
 A Generalized Framework For Concept-Based Explanations'.
 
 ## 1. Installation
