@@ -12,8 +12,8 @@ class SEERClassifier(nn.Module):
         super(SEERClassifier, self).__init__()
         self.latent_dim = latent_dim
         self.name = name
-        self.fc1 = nn.Linear(21, 4*self.latent_dim)
-        self.fc2 = nn.Linear(4*self.latent_dim, self.latent_dim)
+        self.fc1 = nn.Linear(21, 4 * self.latent_dim)
+        self.fc2 = nn.Linear(4 * self.latent_dim, self.latent_dim)
         self.out = nn.Linear(self.latent_dim, 2)
         self.checkpoints_files = []
         self.relu = nn.ReLU()
@@ -43,8 +43,12 @@ class SEERClassifier(nn.Module):
         h = self.out(h)
         return h
 
-    def train_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader,
-                    optimizer: torch.optim.Optimizer) -> np.ndarray:
+    def train_epoch(
+        self,
+        device: torch.device,
+        dataloader: torch.utils.data.DataLoader,
+        optimizer: torch.optim.Optimizer,
+    ) -> np.ndarray:
         """
         One epoch of the training loop
         Args:
@@ -72,7 +76,9 @@ class SEERClassifier(nn.Module):
             train_loss.append(loss.detach().cpu().numpy())
         return np.mean(train_loss)
 
-    def test_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader) -> tuple:
+    def test_epoch(
+        self, device: torch.device, dataloader: torch.utils.data.DataLoader
+    ) -> tuple:
         """
         One epoch of the testing loop
         Args:
@@ -93,15 +99,25 @@ class SEERClassifier(nn.Module):
                 loss = self.criterion(pred_batch, label_batch)
                 test_loss.append(loss.cpu().numpy())
                 test_acc.append(
-                    torch.count_nonzero(label_batch == torch.argmax(pred_batch, dim=-1)).cpu().numpy() / len(
-                        label_batch)
+                    torch.count_nonzero(label_batch == torch.argmax(pred_batch, dim=-1))
+                    .cpu()
+                    .numpy()
+                    / len(label_batch)
                 )
 
         return np.mean(test_loss), np.mean(test_acc)
 
-    def fit(self, device: torch.device, train_loader: torch.utils.data.DataLoader,
-            test_loader: torch.utils.data.DataLoader, save_dir: pathlib.Path,
-            lr: int = 1e-03, n_epoch: int = 50, patience: int = 10, checkpoint_interval: int = -1) -> None:
+    def fit(
+        self,
+        device: torch.device,
+        train_loader: torch.utils.data.DataLoader,
+        test_loader: torch.utils.data.DataLoader,
+        save_dir: pathlib.Path,
+        lr: int = 1e-03,
+        n_epoch: int = 50,
+        patience: int = 10,
+        checkpoint_interval: int = -1,
+    ) -> None:
         """
         Fit the classifier on the training set
         Args:
@@ -124,15 +140,19 @@ class SEERClassifier(nn.Module):
         for epoch in range(n_epoch):
             train_loss = self.train_epoch(device, train_loader, optim)
             test_loss, test_acc = self.test_epoch(device, test_loader)
-            logging.info(f'Epoch {epoch + 1}/{n_epoch} \t '
-                         f'Train Loss {train_loss:.3g} \t '
-                         f'Test Loss {test_loss:.3g} \t'
-                         f'Test Accuracy {test_acc * 100:.3g}% \t ')
+            logging.info(
+                f"Epoch {epoch + 1}/{n_epoch} \t "
+                f"Train Loss {train_loss:.3g} \t "
+                f"Test Loss {test_loss:.3g} \t"
+                f"Test Accuracy {test_acc * 100:.3g}% \t "
+            )
             if test_acc <= best_test_acc:
                 waiting_epoch += 1
-                logging.info(f'No improvement over the best epoch \t Patience {waiting_epoch} / {patience}')
+                logging.info(
+                    f"No improvement over the best epoch \t Patience {waiting_epoch} / {patience}"
+                )
             else:
-                logging.info(f'Saving the model in {save_dir}')
+                logging.info(f"Saving the model in {save_dir}")
                 self.cpu()
                 self.save(save_dir)
                 self.to(device)
@@ -140,12 +160,14 @@ class SEERClassifier(nn.Module):
                 waiting_epoch = 0
             if checkpoint_interval > 0 and epoch % checkpoint_interval == 0:
                 n_checkpoint = 1 + epoch // checkpoint_interval
-                logging.info(f'Saving checkpoint {n_checkpoint} in {save_dir}')
-                path_to_checkpoint = save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                logging.info(f"Saving checkpoint {n_checkpoint} in {save_dir}")
+                path_to_checkpoint = (
+                    save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                )
                 torch.save(self.state_dict(), path_to_checkpoint)
                 self.checkpoints_files.append(path_to_checkpoint)
             if waiting_epoch == patience:
-                logging.info(f'Early stopping activated')
+                logging.info(f"Early stopping activated")
                 break
 
     def save(self, directory: pathlib.Path) -> None:
